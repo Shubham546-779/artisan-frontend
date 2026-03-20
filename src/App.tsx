@@ -1070,7 +1070,7 @@ function ImageUploader({ value, onChange }: { value: string; onChange: (url: str
 
   return (
     <div>
-      <input ref={fileRef} type="file" accept="image/*" capture="environment"
+      <input ref={fileRef} type="file" accept="image/*"
         onChange={handleFile} style={{ display:'none' }}/>
 
       {preview ? (
@@ -1115,10 +1115,10 @@ function ImageUploader({ value, onChange }: { value: string; onChange: (url: str
               </svg>
               <div>
                 <p style={{ fontFamily:'"Cinzel",serif', fontSize:'0.78rem', fontWeight:600, color:'#5c3d1e', letterSpacing:'0.08em' }}>
-                  📱 Tap to choose from Gallery
+                  📁 Gallery / Camera / PC Folder
                 </p>
                 <p style={{ fontFamily:'"Crimson Pro",serif', fontSize:'0.82rem', color:'#8a7560', marginTop:4 }}>
-                  or drag & drop from your PC
+                  Tap to choose · or drag & drop from PC
                 </p>
                 <p style={{ fontFamily:'"Crimson Pro",serif', fontSize:'0.75rem', color:'#a89070', marginTop:4, fontStyle:'italic' }}>
                   JPG, PNG, WEBP · Max 5MB
