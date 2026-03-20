@@ -706,30 +706,18 @@ export function App() {
               style={{ width:36, height:36, borderRadius:8, border:`1px solid ${T.line}`, background:T.paper, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', color:T.inkM, flexShrink:0 }}>
               {darkMode ? <Sun size={16}/> : <Moon size={16}/>}
             </button>
-
+            {/* User name chip — taps to profile, no sign out here */}
             {user.role ? (
-              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                <div style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 10px', background:T.paper, borderRadius:10, border:`1px solid ${T.line}` }}>
-                  <div style={{ width:28, height:28, borderRadius:'50%', background:T.forest, display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontSize:'0.78rem', fontWeight:700, flexShrink:0 }}>{user.name[0]?.toUpperCase()}</div>
-                  <div className="hide-mobile">
-                    <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', fontWeight:600, color:T.ink, lineHeight:1 }}>{user.name}</p>
-                    <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.62rem', color:T.inkL, lineHeight:1, marginTop:2, textTransform:'capitalize' }}>{user.role}</p>
-                  </div>
+              <div onClick={()=>nav('profile')} style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 10px', background:T.paper, borderRadius:10, border:`1px solid ${T.line}`, cursor:'pointer' }}>
+                <div style={{ width:28, height:28, borderRadius:'50%', background:T.forest, display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontSize:'0.78rem', fontWeight:700, flexShrink:0 }}>{user.name[0]?.toUpperCase()}</div>
+                <div className="hide-mobile">
+                  <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', fontWeight:600, color:T.ink, lineHeight:1 }}>{user.name}</p>
+                  <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.62rem', color:T.inkL, lineHeight:1, marginTop:2, textTransform:'capitalize' }}>{user.role}</p>
                 </div>
-                <button onClick={handleLogout} style={{ padding:'6px 10px', background:'transparent', color:T.inkL, border:`1px solid ${T.line}`, borderRadius:8, fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', fontWeight:500, cursor:'pointer' }}>Sign out</button>
               </div>
             ) : (
               <button onClick={()=>nav('login')} style={{ padding:'8px 16px', background:T.forest, color:'#fff', border:'none', borderRadius:8, fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', fontWeight:600, cursor:'pointer' }}>Sign In</button>
             )}
-            <button onClick={()=>setCartOpen(true)}
-              style={{ position:'relative', display:'flex', alignItems:'center', gap:6, padding:'8px 14px', background:T.forest, color:'#fff', border:'none', borderRadius:8, fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', fontWeight:600, cursor:'pointer', flexShrink:0 }}>
-              <ShoppingCart size={16}/>
-              <span className="hide-mobile">Basket</span>
-              {cartCount>0 && <span style={{ position:'absolute', top:-6, right:-6, background:T.rust, color:'#fff', borderRadius:'50%', width:18, height:18, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'0.62rem', fontWeight:700 }}>{cartCount}</span>}
-            </button>
-            <button onClick={()=>nav('sell')} style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 14px', background:T.paper, color:T.forest, border:`1.5px solid ${T.forestXL}`, borderRadius:8, fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', fontWeight:600, cursor:'pointer', flexShrink:0 }}>
-              <Sprout size={14}/><span className="hide-mobile">Sell</span>
-            </button>
           </div>
         </div>
         {view!=='product'&&view!=='login' && (
