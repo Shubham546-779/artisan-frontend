@@ -134,11 +134,25 @@ function OrderFormModal({ cart, onClose, onSuccess }: {
 
     try {
       const ejs = (window as any).emailjs;
-      if (!ejs) throw new Error('EmailJS not loaded');
 
-      await ejs.send(
-        import.meta.env.VITE_EMAILJS_SERVICE_ID,
-        import.meta.env.VITE_EMAILJS_TEMPLATE_ID,
+      // Debug checks
+      if (!ejs) {
+        setError('EmailJS script not loaded. Check your index.html has the CDN script tag.');
+        setSending(false); return;
+      }
+
+      const serviceId  = import.meta.env.VITE_EMAILJS_SERVICE_ID;
+      const templateId = import.meta.env.VITE_EMAILJS_TEMPLATE_ID;
+      const publicKey  = import.meta.env.VITE_EMAILJS_PUBLIC_KEY;
+
+      if (!serviceId || !templateId || !publicKey) {
+        setError(`Missing EmailJS keys. Service: ${serviceId ? '✓' : '✗'}  Template: ${templateId ? '✓' : '✗'}  Key: ${publicKey ? '✓' : '✗'}`);
+        setSending(false); return;
+      }
+
+      const result = await ejs.send(
+        serviceId,
+        templateId,
         {
           order_id:         orderId,
           customer_name:    form.name,
@@ -150,13 +164,15 @@ function OrderFormModal({ cart, onClose, onSuccess }: {
           delivery_address: deliveryAddress,
           order_date:       new Date().toLocaleDateString('en-IN', { day:'numeric', month:'long', year:'numeric' }),
         },
-        import.meta.env.VITE_EMAILJS_PUBLIC_KEY,
+        publicKey,
       );
 
+      console.log('EmailJS result:', result);
       onSuccess();
-    } catch (e) {
-      console.error('EmailJS error:', e);
-      setError('Could not send email. Check your EmailJS keys in .env file.');
+    } catch (e: any) {
+      console.error('EmailJS full error:', e);
+      const msg = e?.text || e?.message || JSON.stringify(e) || 'Unknown error';
+      setError(`Email failed: ${msg}`);
     } finally {
       setSending(false);
     }
@@ -572,6 +588,17 @@ export function App() {
       <AnimatePresence>{toast && <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)}/>}</AnimatePresence>
       <AnimatePresence>{cartOpen && <CartDrawer cart={cart} onClose={() => setCartOpen(false)} onUpdateQty={updateCartQty} onRemove={removeFromCart} onClearCart={() => setCart([])} showToast={showToast}/>}</AnimatePresence>
       <AnimatePresence>{showShopModal && <ShopNameModal onConfirm={handleShopConfirm} onClose={() => setShowShopModal(false)}/>}</AnimatePresence>
+
+      {/* TOP ANNOUNCEMENT BAR */}
+      <div style={{ background:'#4a5e3a', color:'#f5edd6', padding:'8px 16px', textAlign:'center', fontFamily:'"Cinzel",serif', fontSize:'0.68rem', letterSpacing:'0.1em', display:'flex', alignItems:'center', justifyContent:'center', gap:10, flexWrap:'wrap' }}>
+        <span>🌿</span>
+        <span>Free delivery above ₹50</span>
+        <span style={{ opacity:0.5 }}>·</span>
+        <span>100% Handmade</span>
+        <span style={{ opacity:0.5 }}>·</span>
+        <span>7-Day Easy Returns</span>
+        <span>🌿</span>
+      </div>
 
       {/* HEADER */}
       <header style={{ position:'sticky', top:0, zIndex:100, background:'#ede0c0ee', backdropFilter:'blur(8px)', borderBottom:'2px solid #a89070', boxShadow:'0 3px 16px rgba(44,31,14,0.15)' }}>
