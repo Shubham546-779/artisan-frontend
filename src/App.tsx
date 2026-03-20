@@ -1014,6 +1014,125 @@ function ProductDetailView({product:init,onProduct,isOwn,onAddToCart,showToast}:
   );
 }
 
+// ─── IMAGE UPLOADER ────────────────────────────────────────
+function ImageUploader({ value, onChange }: { value: string; onChange: (url: string) => void }) {
+  const [uploading, setUploading] = useState(false);
+  const [preview, setPreview]     = useState(value);
+  const [error, setError]         = useState('');
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const uploadToImgBB = async (file: File) => {
+    setUploading(true); setError('');
+    try {
+      // Always use base64 preview first for instant display
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const dataUrl = e.target?.result as string;
+        setPreview(dataUrl);
+        onChange(dataUrl);
+      };
+      reader.readAsDataURL(file);
+
+      // Try ImgBB upload for a permanent URL
+      const formData = new FormData();
+      formData.append('image', file);
+      const apiKey = import.meta.env.VITE_IMGBB_API_KEY || 'c2d3f5d7f9e1a3b5c7d9e1f3';
+      const res = await fetch(`https://api.imgbb.com/1/upload?key=${apiKey}`, {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+      if (data.success) {
+        const url = data.data.url;
+        setPreview(url);
+        onChange(url);
+      }
+      // If ImgBB fails, base64 from FileReader above is already set
+    } catch {
+      // base64 fallback already handled above
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { setError('Image must be less than 5MB'); return; }
+    uploadToImgBB(file);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files?.[0];
+    if (file && file.type.startsWith('image/')) uploadToImgBB(file);
+  };
+
+  return (
+    <div>
+      <input ref={fileRef} type="file" accept="image/*" capture="environment"
+        onChange={handleFile} style={{ display:'none' }}/>
+
+      {preview ? (
+        <div style={{ position:'relative', borderRadius:2, overflow:'hidden', border:'1.5px solid #c9b899' }}>
+          <img src={preview} alt="Preview" style={{ width:'100%', height:200, objectFit:'cover', display:'block', filter:'sepia(8%)' }}/>
+          <div style={{ position:'absolute', inset:0, background:'rgba(44,31,14,0)', transition:'background .2s' }}/>
+          <button onClick={() => { setPreview(''); onChange(''); if (fileRef.current) fileRef.current.value = ''; }}
+            style={{ position:'absolute', top:8, right:8, background:'rgba(160,64,48,0.9)', border:'none', borderRadius:'50%', width:32, height:32, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', color:'#f5edd6' }}>
+            <X size={15}/>
+          </button>
+          <button onClick={() => fileRef.current?.click()}
+            style={{ position:'absolute', bottom:8, right:8, background:'rgba(74,94,58,0.9)', border:'none', borderRadius:2, padding:'6px 12px', cursor:'pointer', color:'#f5edd6', fontFamily:'"Cinzel",serif', fontSize:'0.6rem', letterSpacing:'0.1em' }}>
+            Change
+          </button>
+          {uploading && (
+            <div style={{ position:'absolute', inset:0, background:'rgba(245,237,214,0.8)', display:'flex', alignItems:'center', justifyContent:'center', gap:10 }}>
+              <Loader2 size={20} color="#4a5e3a" style={{ animation:'spin 1s linear infinite' }}/>
+              <span style={{ fontFamily:'"Cinzel",serif', fontSize:'0.72rem', color:'#4a5e3a' }}>Uploading…</span>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div
+          onClick={() => fileRef.current?.click()}
+          onDrop={handleDrop}
+          onDragOver={(e) => e.preventDefault()}
+          style={{ border:'2px dashed #c9b899', borderRadius:2, padding:'32px 20px', textAlign:'center', cursor:'pointer', background:'#f5edd6', transition:'border-color .2s, background .2s' }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor='#4a5e3a'; (e.currentTarget as HTMLDivElement).style.background='#f0ead6'; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor='#c9b899'; (e.currentTarget as HTMLDivElement).style.background='#f5edd6'; }}>
+          {uploading ? (
+            <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:10 }}>
+              <Loader2 size={32} color="#4a5e3a" style={{ animation:'spin 1s linear infinite' }}/>
+              <p style={{ fontFamily:'"Cinzel",serif', fontSize:'0.72rem', color:'#4a5e3a', letterSpacing:'0.1em' }}>Uploading image…</p>
+            </div>
+          ) : (
+            <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:10 }}>
+              {/* Upload icon */}
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#8a7560" strokeWidth="1.2">
+                <rect x="3" y="3" width="18" height="18" rx="2"/>
+                <circle cx="8.5" cy="8.5" r="1.5"/>
+                <polyline points="21 15 16 10 5 21"/>
+              </svg>
+              <div>
+                <p style={{ fontFamily:'"Cinzel",serif', fontSize:'0.78rem', fontWeight:600, color:'#5c3d1e', letterSpacing:'0.08em' }}>
+                  📱 Tap to choose from Gallery
+                </p>
+                <p style={{ fontFamily:'"Crimson Pro",serif', fontSize:'0.82rem', color:'#8a7560', marginTop:4 }}>
+                  or drag & drop from your PC
+                </p>
+                <p style={{ fontFamily:'"Crimson Pro",serif', fontSize:'0.75rem', color:'#a89070', marginTop:4, fontStyle:'italic' }}>
+                  JPG, PNG, WEBP · Max 5MB
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+      {error && <p style={{ fontFamily:'"Crimson Pro",serif', fontSize:'0.82rem', color:'#a04030', marginTop:6 }}>{error}</p>}
+    </div>
+  );
+}
+
 function SellView({onAdd}:{onAdd:(p:Partial<Product>)=>Promise<void>;}) {
   const [f,setF]=useState({name:'',description:'',price:'',category:'Other' as Category,imageUrl:''});
   const [submitting,setSubmitting]=useState(false);
@@ -1036,7 +1155,16 @@ function SellView({onAdd}:{onAdd:(p:Partial<Product>)=>Promise<void>;}) {
         <WoodGrain/>
         <div style={{position:'relative',zIndex:1,display:'flex',flexDirection:'column',gap:18}}>
           <div><label style={lbl}>Item Name</label><input type="text" placeholder="e.g. Hand-carved Wooden Spoon" value={f.name} onChange={(e) => setF({...f,name:e.target.value})} style={inp}/></div>
-          <div><label style={lbl}>Image URL</label><input type="url" placeholder="https://…" value={f.imageUrl} onChange={(e) => setF({...f,imageUrl:e.target.value})} style={inp}/></div>
+
+          {/* IMAGE UPLOAD */}
+          <div>
+            <label style={lbl}>Product Image</label>
+            <div style={{marginTop:7}}>
+              <ImageUploader value={f.imageUrl} onChange={(url) => setF({...f, imageUrl:url})}/>
+            </div>
+            {!f.imageUrl && <p style={{fontFamily:'"Crimson Pro",serif',fontSize:'0.78rem',color:'#a04030',marginTop:6}}>* Image is required</p>}
+          </div>
+
           <div className="sell-price-cat" style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
             <div><label style={lbl}>Price (₹)</label><input type="number" placeholder="0.00" value={f.price} onChange={(e) => setF({...f,price:e.target.value})} style={inp}/></div>
             <div><label style={lbl}>Category</label>
@@ -1046,8 +1174,8 @@ function SellView({onAdd}:{onAdd:(p:Partial<Product>)=>Promise<void>;}) {
             </div>
           </div>
           <div><label style={lbl}>Description</label><textarea rows={4} placeholder="Describe your craft…" value={f.description} onChange={(e) => setF({...f,description:e.target.value})} style={{...inp,resize:'vertical'}}/></div>
-          <button className="press" onClick={handle} disabled={submitting}
-            style={{padding:'14px',background:submitting?'#8a7560':'#4a5e3a',color:'#f5edd6',border:'none',borderRadius:2,fontFamily:'"Cinzel",serif',fontSize:'0.78rem',letterSpacing:'0.14em',display:'flex',alignItems:'center',justifyContent:'center',gap:10,cursor:submitting?'not-allowed':'pointer'}}>
+          <button className="press" onClick={handle} disabled={submitting||!f.imageUrl}
+            style={{padding:'14px',background:(submitting||!f.imageUrl)?'#8a7560':'#4a5e3a',color:'#f5edd6',border:'none',borderRadius:2,fontFamily:'"Cinzel",serif',fontSize:'0.78rem',letterSpacing:'0.14em',display:'flex',alignItems:'center',justifyContent:'center',gap:10,cursor:(submitting||!f.imageUrl)?'not-allowed':'pointer'}}>
             {submitting ? <><Loader2 size={15} style={{animation:'spin 1s linear infinite'}}/> Listing…</> : <>List Your Craft <ArrowRight size={15}/></>}
           </button>
         </div>
