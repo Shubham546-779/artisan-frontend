@@ -592,14 +592,18 @@ export function App() {
         .mobile-search{display:none;}
         @media(max-width:640px){.mobile-search{display:block;} .desktop-search{display:none !important;} .header-tagline{display:none;} .user-name-hdr{max-width:65px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}}
         @media(max-width:480px){.product-detail-split{grid-template-columns:1fr !important;} .product-detail-image-col{position:static !important;border-right:none !important;border-bottom:1.5px solid #c9b899;} .sell-price-cat{grid-template-columns:1fr !important;} .profile-stats-grid{grid-template-columns:repeat(3,1fr) !important;}}
+        /* Safe area for notch/status bar */
+        :root { --sat: env(safe-area-inset-top); --sab: env(safe-area-inset-bottom); }
+        .safe-top { padding-top: env(safe-area-inset-top); }
+        .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
       `}</style>
 
       <AnimatePresence>{toast && <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)}/>}</AnimatePresence>
       <AnimatePresence>{cartOpen && <CartDrawer cart={cart} onClose={() => setCartOpen(false)} onUpdateQty={updateCartQty} onRemove={removeFromCart} onClearCart={() => setCart([])} showToast={showToast}/>}</AnimatePresence>
       <AnimatePresence>{showShopModal && <ShopNameModal onConfirm={handleShopConfirm} onClose={() => setShowShopModal(false)}/>}</AnimatePresence>
 
-      {/* TOP ANNOUNCEMENT BAR — empty spacing bar */}
-      <div style={{ background:'#4a5e3a', height:12 }}/>
+      {/* TOP ANNOUNCEMENT BAR — empty spacing bar with safe area for notch */}
+      <div style={{ background:'#4a5e3a', height:12, paddingTop:'env(safe-area-inset-top)' }}/>
 
       {/* HEADER */}
       <header style={{ position:'sticky', top:0, zIndex:100, background:'#ede0c0ee', backdropFilter:'blur(8px)', borderBottom:'2px solid #a89070', boxShadow:'0 3px 16px rgba(44,31,14,0.15)' }}>
@@ -702,7 +706,7 @@ export function App() {
       </main>
 
       {/* BOTTOM NAV */}
-      <nav style={{ position:'fixed', bottom:0, left:0, right:0, background:'#ede0c0f0', backdropFilter:'blur(10px)', borderTop:'2px solid #a89070', zIndex:100 }}>
+      <nav style={{ position:'fixed', bottom:0, left:0, right:0, background:'#ede0c0f0', backdropFilter:'blur(10px)', borderTop:'2px solid #a89070', zIndex:100, paddingBottom:'env(safe-area-inset-bottom)' }}>
         <div style={{ display:'flex', justifyContent:'space-around', maxWidth:480, margin:'0 auto', padding:'4px 0' }}>
           {([
             {v:'home' as NavName, icon:<Home size={20}/>, label:'🌿 Home'},
