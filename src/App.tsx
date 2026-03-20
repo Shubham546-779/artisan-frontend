@@ -355,7 +355,7 @@ function CartDrawer({ cart, onClose, onUpdateQty, onRemove, onClearCart, showToa
               <h2 style={{ fontFamily:'"Cinzel",serif', fontSize:'1rem', fontWeight:700, color:'#5c3d1e', letterSpacing:'0.1em' }}>Your Basket</h2>
               <span style={{ background:'#4a5e3a', color:'#f5edd6', borderRadius:'50%', width:22, height:22, display:'flex', alignItems:'center', justifyContent:'center', fontFamily:'"Cinzel",serif', fontSize:'0.65rem', fontWeight:700 }}>{cart.length}</span>
             </div>
-            <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'#8a7560', position:'relative', zIndex:1 }}><X size={20}/></button>
+            <button onClick={onClose} style={{ background:'transparent', border:'1px solid #c9b899', borderRadius:4, padding:'5px 12px', cursor:'pointer', color:'#8a7560', fontFamily:'"Cinzel",serif', fontSize:'0.62rem', letterSpacing:'0.08em', position:'relative', zIndex:1 }}>← Back</button>
           </div>
           <div style={{ flex:1, overflowY:'auto', padding:'16px' }}>
             {cart.length === 0 ? (
@@ -488,11 +488,20 @@ export function App() {
   const [prevView, setPrevView]       = useState<NavName>('home');
   const [user, setUser]               = useState<AppUser>({ role:null, name:'', id:'' });
   const [toast, setToast]             = useState<{ msg:string; type:'success'|'error' }|null>(null);
-  const [cart, setCart]               = useState<CartItem[]>([]);
+  const [cart, setCart]               = useState<CartItem[]>(() => {
+    try { const saved = localStorage.getItem('ab_cart'); return saved ? JSON.parse(saved) : []; }
+    catch { return []; }
+  });
   const [cartOpen, setCartOpen]       = useState(false);
   const [showShopModal, setShowShopModal] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout>|undefined>(undefined);
   const showToast = useCallback((msg:string, type:'success'|'error'='success') => setToast({ msg, type }), []);
+
+  // Save cart to localStorage whenever it changes
+  useEffect(() => {
+    try { localStorage.setItem('ab_cart', JSON.stringify(cart)); }
+    catch { /* silent */ }
+  }, [cart]);
 
   useEffect(() => {
     if (tokenStore.get()) {
@@ -549,7 +558,7 @@ export function App() {
   }, [user.role]);
 
   const handleLogout = useCallback(() => {
-    api.auth.logout(); setUser({role:null,name:'',id:''}); setCart([]);
+    api.auth.logout(); setUser({role:null,name:'',id:''});
     setView('home'); setSelProduct(null); showToast('Signed out');
   }, [showToast]);
 
@@ -589,16 +598,8 @@ export function App() {
       <AnimatePresence>{cartOpen && <CartDrawer cart={cart} onClose={() => setCartOpen(false)} onUpdateQty={updateCartQty} onRemove={removeFromCart} onClearCart={() => setCart([])} showToast={showToast}/>}</AnimatePresence>
       <AnimatePresence>{showShopModal && <ShopNameModal onConfirm={handleShopConfirm} onClose={() => setShowShopModal(false)}/>}</AnimatePresence>
 
-      {/* TOP ANNOUNCEMENT BAR */}
-      <div style={{ background:'#4a5e3a', color:'#f5edd6', padding:'8px 16px', textAlign:'center', fontFamily:'"Cinzel",serif', fontSize:'0.68rem', letterSpacing:'0.1em', display:'flex', alignItems:'center', justifyContent:'center', gap:10, flexWrap:'wrap' }}>
-        <span>🌿</span>
-        <span>Free delivery above ₹50</span>
-        <span style={{ opacity:0.5 }}>·</span>
-        <span>100% Handmade</span>
-        <span style={{ opacity:0.5 }}>·</span>
-        <span>7-Day Easy Returns</span>
-        <span>🌿</span>
-      </div>
+      {/* TOP ANNOUNCEMENT BAR — empty spacing bar */}
+      <div style={{ background:'#4a5e3a', height:12 }}/>
 
       {/* HEADER */}
       <header style={{ position:'sticky', top:0, zIndex:100, background:'#ede0c0ee', backdropFilter:'blur(8px)', borderBottom:'2px solid #a89070', boxShadow:'0 3px 16px rgba(44,31,14,0.15)' }}>
