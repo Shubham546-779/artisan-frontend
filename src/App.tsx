@@ -3,50 +3,46 @@ import {
   Search, Star, ChevronLeft, ChevronRight, ShoppingCart, Shield,
   Truck, RefreshCw, Package, MapPin, Clock, Award, ArrowRight,
   Trash2, Plus, Minus, Home, PlusCircle, User, Store, Leaf,
-  Sprout, Loader2, AlertCircle, X, Heart, Filter, TrendingUp,
+  Sprout, Loader2, AlertCircle, X, Heart, Filter, TrendingUp, Moon, Sun,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { api, tokenStore, ApiError } from './api/api';
 import type { Product, Category, Review, ReviewsResponse, ProductDetail } from './api/api';
 
 // ── DESIGN TOKENS ──────────────────────────────────────────
-const T = {
-  // Core palette — warm whites, deep forest greens, rich earth
-  white:    '#FFFFFF',
-  offwhite: '#FAFAF8',
-  paper:    '#F5F2ED',
-  paperD:   '#EDE8E0',
-  line:     '#E2DDD5',
-  lineD:    '#C8C0B4',
-  // Text
-  ink:      '#1C1410',
-  inkM:     '#4A3F35',
-  inkL:     '#7A6E64',
-  // Forest green — primary
-  forest:   '#2D4A2D',
-  forestM:  '#3D6B3D',
-  forestL:  '#5A8A5A',
-  forestXL: '#C8DCC8',
-  // Earth tones
-  earth:    '#6B4C2A',
-  earthM:   '#8B6340',
-  earthL:   '#B8956A',
-  earthXL:  '#F0E8D8',
-  // Accents
+const makeTokens = (dark: boolean) => ({
+  white:    dark ? '#1A1A1A' : '#FFFFFF',
+  offwhite: dark ? '#141414' : '#FAFAF8',
+  paper:    dark ? '#242424' : '#F5F2ED',
+  paperD:   dark ? '#2E2E2E' : '#EDE8E0',
+  line:     dark ? '#333333' : '#E2DDD5',
+  lineD:    dark ? '#444444' : '#C8C0B4',
+  ink:      dark ? '#F0EDE8' : '#1C1410',
+  inkM:     dark ? '#C8BFB5' : '#4A3F35',
+  inkL:     dark ? '#8A8078' : '#7A6E64',
+  forest:   dark ? '#4A7A4A' : '#2D4A2D',
+  forestM:  dark ? '#5A9A5A' : '#3D6B3D',
+  forestL:  dark ? '#6AAA6A' : '#5A8A5A',
+  forestXL: dark ? '#1E3A1E' : '#C8DCC8',
+  earth:    dark ? '#8B6340' : '#6B4C2A',
+  earthM:   dark ? '#A07850' : '#8B6340',
+  earthL:   dark ? '#C8A07A' : '#B8956A',
+  earthXL:  dark ? '#2A1E10' : '#F0E8D8',
   gold:     '#C9A84C',
   goldL:    '#E8D08A',
-  rust:     '#9B3D2A',
-  sage:     '#8FAF8F',
-  // Shadows
-  shadow:   'rgba(28,20,16,0.08)',
-  shadowM:  'rgba(28,20,16,0.14)',
-  shadowL:  'rgba(28,20,16,0.22)',
-};
+  rust:     dark ? '#CC5544' : '#9B3D2A',
+  sage:     dark ? '#7A9F7A' : '#8FAF8F',
+  shadow:   dark ? 'rgba(0,0,0,0.3)' : 'rgba(28,20,16,0.08)',
+  shadowM:  dark ? 'rgba(0,0,0,0.5)' : 'rgba(28,20,16,0.14)',
+  shadowL:  dark ? 'rgba(0,0,0,0.7)' : 'rgba(28,20,16,0.22)',
+});
+
+type Tokens = ReturnType<typeof makeTokens>;
 
 const CATEGORIES: Category[] = ['Jewelry','Home Decor','Clothing','Art','Toys','Gifts','Other'];
 
 const CAT_META: Record<string, { emoji:string; label:string; color:string; bg:string }> = {
-  All:          { emoji:'🌿', label:'All',        color:T.forest,  bg:T.forestXL },
+  All:          { emoji:'🌿', label:'All',        color:'#3D6B3D', bg:'#E8F0E8' },
   Jewelry:      { emoji:'💎', label:'Jewelry',    color:'#7A5830', bg:'#F8F0E0' },
   'Home Decor': { emoji:'🪵', label:'Home',       color:'#6B3D20', bg:'#F5EDE0' },
   Clothing:     { emoji:'🌾', label:'Clothing',   color:'#3D5830', bg:'#E8F0E0' },
@@ -70,7 +66,7 @@ const clamp = (n:number): React.CSSProperties => ({
 });
 
 // ── SPINNER ────────────────────────────────────────────────
-function Spinner({ label='Loading…' }:{ label?:string }) {
+function Spinner({ label='Loading…', T }:{ label?:string; T:Tokens }) {
   return (
     <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'80px 20px', gap:16 }}>
       <div style={{ width:40, height:40, border:`3px solid ${T.forestXL}`, borderTopColor:T.forest, borderRadius:'50%', animation:'spin 0.8s linear infinite' }}/>
@@ -84,9 +80,9 @@ function Toast({ msg, type, onClose }:{ msg:string; type:'success'|'error'; onCl
   useEffect(() => { const t=setTimeout(onClose,3000); return ()=>clearTimeout(t); },[onClose]);
   return (
     <motion.div initial={{ opacity:0, y:50, x:'-50%' }} animate={{ opacity:1, y:0, x:'-50%' }} exit={{ opacity:0, y:50, x:'-50%' }}
-      style={{ position:'fixed', bottom:'5.5rem', left:'50%', zIndex:9999, background:type==='error'?T.rust:T.forest,
+      style={{ position:'fixed', bottom:'5.5rem', left:'50%', zIndex:9999, background:type==='error'?'#9B3D2A':'#2D4A2D',
         color:'#fff', padding:'12px 20px', borderRadius:8, fontSize:'0.82rem', fontFamily:'"Inter",sans-serif',
-        boxShadow:`0 8px 32px ${T.shadowL}`, display:'flex', alignItems:'center', gap:8, whiteSpace:'nowrap',
+        boxShadow:'0 8px 32px rgba(0,0,0,0.3)', display:'flex', alignItems:'center', gap:8, whiteSpace:'nowrap',
         maxWidth:'90vw', fontWeight:500 }}>
       {type==='error' ? <AlertCircle size={15}/> : '✓'} {msg}
     </motion.div>
@@ -94,9 +90,9 @@ function Toast({ msg, type, onClose }:{ msg:string; type:'success'|'error'; onCl
 }
 
 // ── CART DRAWER ────────────────────────────────────────────
-function CartDrawer({ cart, onClose, onUpdateQty, onRemove, onClearCart, showToast }:
+function CartDrawer({ cart, onClose, onUpdateQty, onRemove, onClearCart, showToast, T, onBrowseWares }:
   { cart:CartItem[]; onClose:()=>void; onUpdateQty:(id:string,qty:number)=>void;
-    onRemove:(id:string)=>void; onClearCart:()=>void; showToast:(m:string,t?:'success'|'error')=>void; }) {
+    onRemove:(id:string)=>void; onClearCart:()=>void; showToast:(m:string,t?:'success'|'error')=>void; T:Tokens; onBrowseWares:()=>void }) {
   const total = cart.reduce((s,i) => s+i.product.price*i.qty, 0);
   const [showOrderForm, setShowOrderForm] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
@@ -111,7 +107,6 @@ function CartDrawer({ cart, onClose, onUpdateQty, onRemove, onClearCart, showToa
           onClick={e=>e.stopPropagation()}
           style={{ position:'absolute', top:0, right:0, bottom:0, width:'min(440px,100vw)', background:T.white,
             display:'flex', flexDirection:'column', boxShadow:`-12px 0 48px ${T.shadowL}` }}>
-          {/* Header */}
           <div style={{ padding:'20px 24px', borderBottom:`1px solid ${T.line}`, display:'flex', alignItems:'center',
             justifyContent:'space-between', background:T.white, marginTop:'env(safe-area-inset-top)' }}>
             <div style={{ display:'flex', alignItems:'center', gap:12 }}>
@@ -128,7 +123,6 @@ function CartDrawer({ cart, onClose, onUpdateQty, onRemove, onClearCart, showToa
             </button>
           </div>
 
-          {/* Items */}
           <div style={{ flex:1, overflowY:'auto', padding:'16px' }}>
             {cart.length===0 ? (
               <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'100%', gap:16, padding:'60px 20px' }}>
@@ -137,7 +131,7 @@ function CartDrawer({ cart, onClose, onUpdateQty, onRemove, onClearCart, showToa
                 </div>
                 <p style={{ fontFamily:'"Playfair Display",serif', fontSize:'1.1rem', color:T.inkM, fontStyle:'italic', textAlign:'center' }}>Your basket is empty</p>
                 <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', color:T.inkL, textAlign:'center' }}>Discover handcrafted wares and add them here</p>
-                <button onClick={onClose} style={{ padding:'10px 24px', background:T.forest, color:'#fff', border:'none', borderRadius:8, fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', fontWeight:600, cursor:'pointer' }}>Browse Wares</button>
+                <button onClick={onBrowseWares} style={{ padding:'10px 24px', background:T.forest, color:'#fff', border:'none', borderRadius:8, fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', fontWeight:600, cursor:'pointer', display:'flex', alignItems:'center', gap:6 }}>Browse Wares <ArrowRight size={14}/></button>
               </div>
             ) : (
               <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
@@ -165,14 +159,13 @@ function CartDrawer({ cart, onClose, onUpdateQty, onRemove, onClearCart, showToa
             )}
           </div>
 
-          {/* Footer */}
           {cart.length>0 && (
             <div style={{ padding:'20px 24px', borderTop:`1px solid ${T.line}`, background:T.white }}>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
                 <span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', color:T.inkL, fontWeight:500 }}>Total Amount</span>
                 <span style={{ fontFamily:'"Playfair Display",serif', fontSize:'1.4rem', fontWeight:700, color:T.ink }}>₹{total.toFixed(2)}</span>
               </div>
-              <button className="btn-primary" onClick={()=>setShowOrderForm(true)}
+              <button onClick={()=>setShowOrderForm(true)}
                 style={{ width:'100%', padding:'14px', background:T.forest, color:'#fff', border:'none', borderRadius:10, fontFamily:'"Inter",sans-serif', fontSize:'0.88rem', fontWeight:600, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
                 Proceed to Checkout <ArrowRight size={16}/>
               </button>
@@ -186,7 +179,7 @@ function CartDrawer({ cart, onClose, onUpdateQty, onRemove, onClearCart, showToa
 
       <AnimatePresence>
         {showOrderForm && (
-          <OrderFormModal cart={cart} onClose={()=>setShowOrderForm(false)}
+          <OrderFormModal cart={cart} onClose={()=>setShowOrderForm(false)} T={T}
             onSuccess={()=>{
               const oid=`AB-${Date.now().toString(36).toUpperCase()}`;
               setSuccessData({orderId:oid,email:''});
@@ -196,7 +189,7 @@ function CartDrawer({ cart, onClose, onUpdateQty, onRemove, onClearCart, showToa
       </AnimatePresence>
       <AnimatePresence>
         {showSuccess && (
-          <OrderSuccessModal orderId={successData.orderId} email={successData.email}
+          <OrderSuccessModal orderId={successData.orderId} email={successData.email} T={T}
             onClose={()=>{ setShowSuccess(false); onClose(); }}/>
         )}
       </AnimatePresence>
@@ -207,7 +200,7 @@ function CartDrawer({ cart, onClose, onUpdateQty, onRemove, onClearCart, showToa
 // ── ORDER FORM MODAL ───────────────────────────────────────
 interface OrderForm { name:string; email:string; mobile:string; address:string; city:string; pincode:string; }
 
-function OrderFormModal({ cart, onClose, onSuccess }:{ cart:CartItem[]; onClose:()=>void; onSuccess:()=>void; }) {
+function OrderFormModal({ cart, onClose, onSuccess, T }:{ cart:CartItem[]; onClose:()=>void; onSuccess:()=>void; T:Tokens }) {
   const total = cart.reduce((s,i) => s+i.product.price*i.qty, 0);
   const [form, setForm] = useState<OrderForm>({name:'',email:'',mobile:'',address:'',city:'',pincode:''});
   const [sending, setSending] = useState(false);
@@ -263,10 +256,9 @@ function OrderFormModal({ cart, onClose, onSuccess }:{ cart:CartItem[]; onClose:
             <h2 style={{ fontFamily:'"Playfair Display",serif', fontSize:'1.2rem', fontWeight:700, color:T.ink, margin:'0 0 4px' }}>Delivery Details</h2>
             <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.78rem', color:T.inkL, margin:0 }}>Order {orderId} · ₹{total.toFixed(2)}</p>
           </div>
-          <button onClick={onClose} style={{ background:T.paper, border:'none', borderRadius:8, width:36, height:36, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}><X size={18}/></button>
+          <button onClick={onClose} style={{ background:T.paper, border:'none', borderRadius:8, width:36, height:36, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:T.inkM }}><X size={18}/></button>
         </div>
         <div style={{ flex:1, overflowY:'auto', padding:'20px 24px' }}>
-          {/* Order summary */}
           <div style={{ background:T.paper, borderRadius:12, padding:'14px', marginBottom:20 }}>
             <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', fontWeight:600, color:T.inkL, textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:10 }}>Order Summary</p>
             {cart.map(item => (
@@ -304,7 +296,7 @@ function OrderFormModal({ cart, onClose, onSuccess }:{ cart:CartItem[]; onClose:
           </div>
           {error && (
             <div style={{ marginTop:14, padding:'12px 14px', background:'#FFF0EE', border:'1px solid #F5C5BE', borderRadius:8, display:'flex', alignItems:'center', gap:8 }}>
-              <AlertCircle size={14} color={T.rust}/><span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.85rem', color:T.rust }}>{error}</span>
+              <AlertCircle size={14} color="#9B3D2A"/><span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.85rem', color:'#9B3D2A' }}>{error}</span>
             </div>
           )}
         </div>
@@ -320,7 +312,7 @@ function OrderFormModal({ cart, onClose, onSuccess }:{ cart:CartItem[]; onClose:
 }
 
 // ── ORDER SUCCESS ──────────────────────────────────────────
-function OrderSuccessModal({ orderId, email, onClose }:{ orderId:string; email:string; onClose:()=>void }) {
+function OrderSuccessModal({ orderId, email, onClose, T }:{ orderId:string; email:string; onClose:()=>void; T:Tokens }) {
   return (
     <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
       style={{ position:'fixed', inset:0, zIndex:800, background:'rgba(0,0,0,0.6)', display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
@@ -335,7 +327,7 @@ function OrderSuccessModal({ orderId, email, onClose }:{ orderId:string; email:s
           <p style={{ fontFamily:'monospace', fontSize:'1rem', fontWeight:700, color:T.forest }}>{orderId}</p>
         </div>
         <div style={{ background:'#F0F8F0', border:'1px solid #C8E0C8', borderRadius:10, padding:'12px', marginBottom:24 }}>
-          <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.85rem', color:T.forestM }}>📧 Confirmation email sent!</p>
+          <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.85rem', color:'#3D6B3D' }}>📧 Confirmation email sent!</p>
         </div>
         <button onClick={onClose} style={{ width:'100%', padding:'13px', background:T.forest, color:'#fff', border:'none', borderRadius:10, fontFamily:'"Inter",sans-serif', fontSize:'0.88rem', fontWeight:600, cursor:'pointer' }}>
           Continue Shopping
@@ -346,7 +338,7 @@ function OrderSuccessModal({ orderId, email, onClose }:{ orderId:string; email:s
 }
 
 // ── SHOP NAME MODAL ────────────────────────────────────────
-function ShopNameModal({ onConfirm, onClose }:{ onConfirm:(s:string)=>void; onClose:()=>void }) {
+function ShopNameModal({ onConfirm, onClose, T }:{ onConfirm:(s:string)=>void; onClose:()=>void; T:Tokens }) {
   const [shopName, setShopName] = useState('');
   return (
     <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
@@ -377,65 +369,199 @@ function ShopNameModal({ onConfirm, onClose }:{ onConfirm:(s:string)=>void; onCl
 }
 
 // ── IMAGE UPLOADER ─────────────────────────────────────────
-function ImageUploader({ value, onChange }:{ value:string; onChange:(url:string)=>void }) {
-  const [uploading, setUploading] = useState(false);
-  const [preview, setPreview]     = useState(value);
-  const [error, setError]         = useState('');
-  const fileRef = useRef<HTMLInputElement>(null);
+const isMobile = () => /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+function ImageUploader({ value, onChange, T }:{ value:string; onChange:(url:string)=>void; T:Tokens }) {
+  const [uploading, setUploading]   = useState(false);
+  const [preview, setPreview]       = useState(value);
+  const [error, setError]           = useState('');
+  const [urlMode, setUrlMode]       = useState(false);
+  const [urlInput, setUrlInput]     = useState('');
+  const fileRef    = useRef<HTMLInputElement>(null);  // gallery / any file
+  const cameraRef  = useRef<HTMLInputElement>(null);  // camera capture (mobile)
+  const folderRef  = useRef<HTMLInputElement>(null);  // folder browse (desktop)
+
+  const reset = () => { setPreview(''); onChange(''); setUrlInput(''); setUrlMode(false); setError(''); };
 
   const uploadFile = async (file:File) => {
     setUploading(true); setError('');
+    // show local preview immediately
     const reader = new FileReader();
     reader.onload = e => { const d=e.target?.result as string; setPreview(d); onChange(d); };
     reader.readAsDataURL(file);
     try {
       const fd = new FormData(); fd.append('image', file);
       const apiKey = import.meta.env.VITE_IMGBB_API_KEY||'c2d3f5d7f9e1a3b5';
-      const res = await fetch(`https://api.imgbb.com/1/upload?key=${apiKey}`,{method:'POST',body:fd});
+      const res  = await fetch(`https://api.imgbb.com/1/upload?key=${apiKey}`,{method:'POST',body:fd});
       const data = await res.json();
       if (data.success) { setPreview(data.data.url); onChange(data.data.url); }
-    } catch {} finally { setUploading(false); }
+    } catch { /* keep local base64 preview */ }
+    finally { setUploading(false); }
   };
 
+  const applyUrl = () => {
+    const u = urlInput.trim();
+    if (!u) { setError('Please enter a valid URL'); return; }
+    if (!/^https?:\/\//i.test(u)) { setError('URL must start with http:// or https://'); return; }
+    setPreview(u); onChange(u); setUrlMode(false); setError('');
+  };
+
+  const mobile = isMobile();
+
+  // ── shared button style helper ──────────────────────────
+  const pickBtn = (accent:string, bg:string): React.CSSProperties => ({
+    display:'flex', alignItems:'center', justifyContent:'center', gap:6,
+    padding:'9px 14px', background:bg, color:accent,
+    border:`1.5px solid ${accent}`, borderRadius:9,
+    fontFamily:'"Inter",sans-serif', fontSize:'0.78rem', fontWeight:600,
+    cursor:'pointer', flex:1, whiteSpace:'nowrap', transition:'opacity .15s',
+  });
+
   return (
-    <div>
-      <input ref={fileRef} type="file" accept="image/*" onChange={e=>{ const f=e.target.files?.[0]; if(f) uploadFile(f); }} style={{display:'none'}}/>
+    <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+      {/* hidden file inputs */}
+      <input ref={fileRef}   type="file" accept="image/*"             onChange={e=>{ const f=e.target.files?.[0]; if(f) uploadFile(f); }} style={{display:'none'}}/>
+      <input ref={cameraRef} type="file" accept="image/*" capture="environment" onChange={e=>{ const f=e.target.files?.[0]; if(f) uploadFile(f); }} style={{display:'none'}}/>
+      {/* folder ref — no capture, no accept restriction so OS shows folder picker on desktop */}
+      <input ref={folderRef} type="file" accept="image/*"             onChange={e=>{ const f=e.target.files?.[0]; if(f) uploadFile(f); }} style={{display:'none'}}/>
+
+      {/* ── PREVIEW ── */}
       {preview ? (
         <div style={{ position:'relative', borderRadius:12, overflow:'hidden', border:`1px solid ${T.line}` }}>
           <img src={preview} alt="Preview" style={{ width:'100%', height:200, objectFit:'cover', display:'block' }}/>
-          {uploading && <div style={{ position:'absolute', inset:0, background:'rgba(255,255,255,0.8)', display:'flex', alignItems:'center', justifyContent:'center' }}><Loader2 size={24} color={T.forest} style={{animation:'spin 1s linear infinite'}}/></div>}
-          <button onClick={()=>{ setPreview(''); onChange(''); }} style={{ position:'absolute', top:8, right:8, background:T.rust, border:'none', borderRadius:'50%', width:32, height:32, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', color:'#fff' }}><X size={14}/></button>
-          <button onClick={()=>fileRef.current?.click()} style={{ position:'absolute', bottom:8, right:8, background:T.forest, border:'none', borderRadius:8, padding:'6px 12px', cursor:'pointer', color:'#fff', fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', fontWeight:600 }}>Change</button>
+          {uploading && (
+            <div style={{ position:'absolute', inset:0, background:'rgba(0,0,0,0.45)', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:10 }}>
+              <Loader2 size={28} color="#fff" style={{animation:'spin 1s linear infinite'}}/>
+              <span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.78rem', color:'#fff', fontWeight:600 }}>Uploading…</span>
+            </div>
+          )}
+          {/* top-right remove */}
+          <button onClick={reset} style={{ position:'absolute', top:8, right:8, background:T.rust, border:'none', borderRadius:'50%', width:30, height:30, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', color:'#fff' }}>
+            <X size={13}/>
+          </button>
+          {/* bottom action bar */}
+          <div style={{ position:'absolute', bottom:0, left:0, right:0, padding:'8px 10px', background:'rgba(0,0,0,0.55)', backdropFilter:'blur(4px)', display:'flex', gap:8 }}>
+            {mobile ? (
+              <>
+                <button onClick={()=>fileRef.current?.click()}   style={pickBtn('#fff','rgba(255,255,255,0.15)')}>🖼 Gallery</button>
+                <button onClick={()=>cameraRef.current?.click()} style={pickBtn('#fff','rgba(255,255,255,0.15)')}>📷 Camera</button>
+              </>
+            ) : (
+              <>
+                <button onClick={()=>folderRef.current?.click()} style={pickBtn('#fff','rgba(255,255,255,0.15)')}>📁 Folder</button>
+                <button onClick={()=>fileRef.current?.click()}   style={pickBtn('#fff','rgba(255,255,255,0.15)')}>🖼 Browse</button>
+              </>
+            )}
+            <button onClick={()=>setUrlMode(v=>!v)} style={pickBtn('#fff','rgba(255,255,255,0.15)')}>🔗 URL</button>
+          </div>
         </div>
       ) : (
-        <div onClick={()=>fileRef.current?.click()} onDragOver={e=>e.preventDefault()} onDrop={e=>{ e.preventDefault(); const f=e.dataTransfer.files?.[0]; if(f) uploadFile(f); }}
-          style={{ border:`2px dashed ${T.line}`, borderRadius:12, padding:'32px 20px', textAlign:'center', cursor:'pointer', background:T.offwhite, transition:'all .2s' }}
-          onMouseEnter={e=>(e.currentTarget as HTMLDivElement).style.borderColor=T.forestL}
-          onMouseLeave={e=>(e.currentTarget as HTMLDivElement).style.borderColor=T.line}>
+        /* ── EMPTY STATE ── */
+        <div onDragOver={e=>e.preventDefault()} onDrop={e=>{ e.preventDefault(); const f=e.dataTransfer.files?.[0]; if(f) uploadFile(f); }}
+          style={{ border:`2px dashed ${T.line}`, borderRadius:12, background:T.offwhite, overflow:'hidden' }}>
+
           {uploading ? (
-            <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:12 }}>
+            <div style={{ padding:'36px 20px', display:'flex', flexDirection:'column', alignItems:'center', gap:12 }}>
               <Loader2 size={32} color={T.forest} style={{animation:'spin 1s linear infinite'}}/>
-              <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', color:T.forest }}>Uploading…</p>
+              <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', color:T.forest, fontWeight:600 }}>Uploading image…</p>
             </div>
           ) : (
-            <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:10 }}>
-              <div style={{ width:56, height:56, background:T.forestXL, borderRadius:12, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={T.forest} strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            <>
+              {/* drag hint */}
+              <div style={{ padding:'24px 20px 16px', textAlign:'center' }}>
+                <div style={{ width:52, height:52, background:T.forestXL, borderRadius:12, display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 10px' }}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={T.forest} strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                </div>
+                <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', fontWeight:600, color:T.inkM, marginBottom:4 }}>
+                  {mobile ? 'Tap a button below to add photo' : 'Drag & drop or choose below'}
+                </p>
+                <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.7rem', color:T.inkL }}>JPG · PNG · WEBP · Max 5 MB</p>
               </div>
-              <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.88rem', fontWeight:600, color:T.inkM }}>📱 Gallery / Camera / Files</p>
-              <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.78rem', color:T.inkL }}>Tap to choose or drag & drop</p>
-              <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', color:T.lineD }}>JPG, PNG, WEBP · Max 5MB</p>
-            </div>
+
+              {/* pick buttons */}
+              <div style={{ padding:'0 14px 14px', display:'flex', gap:8, flexWrap:'wrap' }}>
+                {mobile ? (
+                  <>
+                    <button onClick={()=>fileRef.current?.click()}
+                      style={pickBtn(T.forest, T.forestXL)}>
+                      🖼️ Gallery
+                    </button>
+                    <button onClick={()=>cameraRef.current?.click()}
+                      style={pickBtn(T.earth, T.earthXL)}>
+                      📷 Camera
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button onClick={()=>folderRef.current?.click()}
+                      style={pickBtn(T.forest, T.forestXL)}>
+                      📁 From Folder
+                    </button>
+                    <button onClick={()=>fileRef.current?.click()}
+                      style={pickBtn(T.earth, T.earthXL)}>
+                      🖼️ Browse Files
+                    </button>
+                  </>
+                )}
+                <button onClick={()=>setUrlMode(v=>!v)}
+                  style={pickBtn(T.inkM, T.paper)}>
+                  🔗 Paste URL
+                </button>
+              </div>
+            </>
           )}
         </div>
       )}
-      {error && <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.78rem', color:T.rust, marginTop:6 }}>{error}</p>}
+
+      {/* ── URL INPUT (shown when urlMode=true) ── */}
+      <AnimatePresence>
+        {urlMode && (
+          <motion.div initial={{opacity:0,y:-6}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-6}} transition={{duration:.15}}
+            style={{ background:T.paper, borderRadius:10, padding:'12px 14px', border:`1.5px solid ${T.forestL}` }}>
+            <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', fontWeight:600, color:T.forest, textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:8 }}>Paste Image URL</p>
+            <div style={{ display:'flex', gap:8 }}>
+              <input
+                type="url"
+                autoFocus
+                placeholder="https://example.com/photo.jpg"
+                value={urlInput}
+                onChange={e=>{ setUrlInput(e.target.value); setError(''); }}
+                onKeyDown={e=>{ if(e.key==='Enter') applyUrl(); if(e.key==='Escape') setUrlMode(false); }}
+                style={{ flex:1, padding:'9px 12px', background:T.white, border:`1.5px solid ${T.line}`, borderRadius:8, fontSize:'0.85rem', outline:'none', color:T.ink, fontFamily:'"Inter",sans-serif' }}
+              />
+              <button onClick={applyUrl}
+                style={{ padding:'9px 16px', background:T.forest, color:'#fff', border:'none', borderRadius:8, fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', fontWeight:600, cursor:'pointer', whiteSpace:'nowrap' }}>
+                Use
+              </button>
+              <button onClick={()=>{ setUrlMode(false); setError(''); }}
+                style={{ width:36, height:36, background:T.paper, border:`1px solid ${T.line}`, borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', color:T.inkL, flexShrink:0 }}>
+                <X size={14}/>
+              </button>
+            </div>
+            <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.7rem', color:T.inkL, marginTop:6 }}>
+              Press Enter to confirm · Esc to cancel
+            </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {error && (
+        <div style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 12px', background:'#FFF0EE', border:'1px solid #F5C5BE', borderRadius:8 }}>
+          <AlertCircle size={13} color="#9B3D2A"/>
+          <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.78rem', color:'#9B3D2A' }}>{error}</p>
+        </div>
+      )}
     </div>
   );
 }
 
 // ── APP ────────────────────────────────────────────────────
 export function App() {
+  const [darkMode, setDarkMode]       = useState(() => {
+    try { return localStorage.getItem('ab_dark')==='true'; } catch { return false; }
+  });
+  const T = makeTokens(darkMode);
+
   const [products, setProducts]       = useState<Product[]>([]);
   const [loading, setLoading]         = useState(true);
   const [selectedCat, setSelectedCat] = useState<Category|'All'>('All');
@@ -454,6 +580,7 @@ export function App() {
   const timer = useRef<ReturnType<typeof setTimeout>|undefined>(undefined);
   const showToast = useCallback((msg:string, type:'success'|'error'='success') => setToast({msg,type}), []);
 
+  useEffect(() => { try { localStorage.setItem('ab_dark', String(darkMode)); } catch {} }, [darkMode]);
   useEffect(() => { try { localStorage.setItem('ab_cart',JSON.stringify(cart)); } catch {} }, [cart]);
 
   useEffect(() => {
@@ -533,25 +660,23 @@ export function App() {
         @keyframes spin{to{transform:rotate(360deg)}}
         @keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
         .scrollbar-hide::-webkit-scrollbar{display:none;} .scrollbar-hide{-ms-overflow-style:none;scrollbar-width:none;}
-        .card-hover{transition:transform .2s,box-shadow .2s;} .card-hover:hover{transform:translateY(-4px);box-shadow:0 12px 40px rgba(28,20,16,0.14)!important;}
-        .btn-primary{transition:background .15s,transform .1s;} .btn-primary:hover{background:#3d6b3d!important;} .btn-primary:active{transform:scale(.98);}
-        input:focus{border-color:${T.forestL}!important;box-shadow:0 0 0 3px ${T.forestXL}!important;}
+        .card-hover{transition:transform .2s,box-shadow .2s;} .card-hover:hover{transform:translateY(-4px);}
+        .btn-primary{transition:background .15s,transform .1s;} .btn-primary:active{transform:scale(.98);}
         img{display:block;} input,select,textarea{font-family:'"Inter",sans-serif';}
         .mobile-search{display:none;}
         @media(max-width:640px){.mobile-search{display:block;} .desktop-search{display:none!important;} .hide-mobile{display:none!important;}}
-        @media(max-width:480px){.product-split{grid-template-columns:1fr!important;} .product-split-img{position:static!important;border-right:none!important;border-bottom:1px solid ${T.line};} .sell-grid{grid-template-columns:1fr!important;} .stats-grid{grid-template-columns:repeat(3,1fr)!important;}}
+        @media(max-width:480px){.product-split{grid-template-columns:1fr!important;} .product-split-img{position:static!important;border-right:none!important;border-bottom:1px solid ${T.line};} .sell-grid{grid-template-columns:1fr!important;} .stats-grid{grid-template-columns:repeat(2,1fr)!important;}}
         :root{--sat:env(safe-area-inset-top);--sab:env(safe-area-inset-bottom);}
       `}</style>
 
       <AnimatePresence>{toast&&<Toast msg={toast.msg} type={toast.type} onClose={()=>setToast(null)}/>}</AnimatePresence>
-      <AnimatePresence>{cartOpen&&<CartDrawer cart={cart} onClose={()=>setCartOpen(false)} onUpdateQty={updateCartQty} onRemove={removeFromCart} onClearCart={()=>setCart([])} showToast={showToast}/>}</AnimatePresence>
-      <AnimatePresence>{showShopModal&&<ShopNameModal onConfirm={handleShopConfirm} onClose={()=>setShowShopModal(false)}/>}</AnimatePresence>
+      <AnimatePresence>{cartOpen&&<CartDrawer cart={cart} onClose={()=>setCartOpen(false)} onUpdateQty={updateCartQty} onRemove={removeFromCart} onClearCart={()=>setCart([])} showToast={showToast} T={T} onBrowseWares={()=>{ setCartOpen(false); setView('home'); setSelProduct(null); }}/>}</AnimatePresence>
+      <AnimatePresence>{showShopModal&&<ShopNameModal onConfirm={handleShopConfirm} onClose={()=>setShowShopModal(false)} T={T}/>}</AnimatePresence>
 
-      {/* SAFE AREA TOP */}
       <div style={{ background:T.forest, height:'env(safe-area-inset-top)', position:'fixed', top:0, left:0, right:0, zIndex:101 }}/>
 
       {/* HEADER */}
-      <header style={{ position:'sticky', top:'env(safe-area-inset-top)', zIndex:100, background:'rgba(255,255,255,0.95)', backdropFilter:'blur(12px)', borderBottom:`1px solid ${T.line}`, boxShadow:'0 1px 12px rgba(28,20,16,0.06)' }}>
+      <header style={{ position:'sticky', top:'env(safe-area-inset-top)', zIndex:100, background: darkMode ? 'rgba(26,26,26,0.97)' : 'rgba(255,255,255,0.95)', backdropFilter:'blur(12px)', borderBottom:`1px solid ${T.line}`, boxShadow:`0 1px 12px ${T.shadow}` }}>
         <div style={{ maxWidth:1200, margin:'0 auto', padding:'0 16px', height:60, display:'flex', alignItems:'center', gap:12 }}>
           {view==='product' && (
             <button onClick={()=>{ setView(prevView); setSelProduct(null); }}
@@ -559,7 +684,6 @@ export function App() {
               <ChevronLeft size={15}/> Back
             </button>
           )}
-          {/* Logo */}
           <div onClick={()=>nav('home')} style={{ cursor:'pointer', display:'flex', alignItems:'center', gap:10, flexShrink:0, userSelect:'none' }}>
             <div style={{ width:34, height:34, background:T.forest, borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center' }}>
               <Leaf size={18} color="#fff"/>
@@ -569,7 +693,6 @@ export function App() {
               <p className="hide-mobile" style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.62rem', color:T.inkL, lineHeight:1, marginTop:2, letterSpacing:'0.04em' }}>Handcrafted Marketplace</p>
             </div>
           </div>
-          {/* Desktop search */}
           {view!=='product'&&view!=='login' && (
             <div className="desktop-search" style={{ position:'relative', flex:1, maxWidth:480 }}>
               <Search style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', color:T.inkL }} size={15}/>
@@ -577,8 +700,13 @@ export function App() {
                 style={{ width:'100%', paddingLeft:38, paddingRight:16, paddingTop:9, paddingBottom:9, background:T.paper, border:`1.5px solid ${T.line}`, borderRadius:10, fontSize:'0.88rem', outline:'none', color:T.ink, fontFamily:'"Inter",sans-serif' }}/>
             </div>
           )}
-          {/* Right actions */}
           <div style={{ marginLeft:'auto', display:'flex', alignItems:'center', gap:8 }}>
+            {/* Dark mode toggle */}
+            <button onClick={()=>setDarkMode(d=>!d)}
+              style={{ width:36, height:36, borderRadius:8, border:`1px solid ${T.line}`, background:T.paper, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', color:T.inkM, flexShrink:0 }}>
+              {darkMode ? <Sun size={16}/> : <Moon size={16}/>}
+            </button>
+
             {user.role ? (
               <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                 <div style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 10px', background:T.paper, borderRadius:10, border:`1px solid ${T.line}` }}>
@@ -593,20 +721,17 @@ export function App() {
             ) : (
               <button onClick={()=>nav('login')} style={{ padding:'8px 16px', background:T.forest, color:'#fff', border:'none', borderRadius:8, fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', fontWeight:600, cursor:'pointer' }}>Sign In</button>
             )}
-            {/* Cart */}
             <button onClick={()=>setCartOpen(true)}
               style={{ position:'relative', display:'flex', alignItems:'center', gap:6, padding:'8px 14px', background:T.forest, color:'#fff', border:'none', borderRadius:8, fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', fontWeight:600, cursor:'pointer', flexShrink:0 }}>
               <ShoppingCart size={16}/>
               <span className="hide-mobile">Basket</span>
               {cartCount>0 && <span style={{ position:'absolute', top:-6, right:-6, background:T.rust, color:'#fff', borderRadius:'50%', width:18, height:18, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'0.62rem', fontWeight:700 }}>{cartCount}</span>}
             </button>
-            {/* Sell */}
             <button onClick={()=>nav('sell')} style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 14px', background:T.paper, color:T.forest, border:`1.5px solid ${T.forestXL}`, borderRadius:8, fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', fontWeight:600, cursor:'pointer', flexShrink:0 }}>
               <Sprout size={14}/><span className="hide-mobile">Sell</span>
             </button>
           </div>
         </div>
-        {/* Mobile search */}
         {view!=='product'&&view!=='login' && (
           <div className="mobile-search" style={{ padding:'8px 16px 10px', borderTop:`1px solid ${T.line}` }}>
             <div style={{ position:'relative' }}>
@@ -618,18 +743,19 @@ export function App() {
         )}
       </header>
 
-      {/* MAIN CONTENT */}
+      {/* MAIN */}
       <main>
         <AnimatePresence mode="wait">
           {view==='home' && (
             <motion.div key="home" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} transition={{duration:.15}}>
-              <HomeView products={products} loading={loading} selectedCat={selectedCat} setSelectedCat={setSelectedCat} onProduct={goToProduct} onAddToCart={addToCart}/>
+              <HomeView products={products} loading={loading} selectedCat={selectedCat} setSelectedCat={setSelectedCat}
+                onProduct={goToProduct} onAddToCart={addToCart} T={T}/>
             </motion.div>
           )}
           {view==='sell' && (
             <motion.div key="sell" initial={{opacity:0,y:16}} animate={{opacity:1,y:0}} exit={{opacity:0}} transition={{duration:.2}}>
               <div style={{ padding:'32px 16px', maxWidth:640, margin:'0 auto' }}>
-                <SellView onAdd={async p => {
+                <SellView T={T} onAdd={async p => {
                   try { await api.products.create(p); showToast('Your craft is now listed! ✦'); setView('home'); }
                   catch(e) { showToast(e instanceof ApiError?e.message:'Failed to list','error'); }
                 }}/>
@@ -639,25 +765,25 @@ export function App() {
           {view==='profile' && (
             <motion.div key="profile" initial={{opacity:0,y:16}} animate={{opacity:1,y:0}} exit={{opacity:0}} transition={{duration:.2}}>
               <div style={{ padding:'32px 16px' }}>
-                <ProfileView user={user} onProduct={goToProduct} onLogout={handleLogout}/>
+                <ProfileView user={user} onProduct={goToProduct} onLogout={handleLogout} T={T}/>
               </div>
             </motion.div>
           )}
           {view==='login' && (
             <motion.div key="login" initial={{opacity:0,y:16}} animate={{opacity:1,y:0}} exit={{opacity:0}} transition={{duration:.2}}>
-              <LoginView onLogin={handleLogin}/>
+              <LoginView onLogin={handleLogin} T={T}/>
             </motion.div>
           )}
           {view==='product'&&selProduct && (
             <motion.div key={`pd-${selProduct.id}`} initial={{opacity:0,y:16}} animate={{opacity:1,y:0}} exit={{opacity:0}} transition={{duration:.2}}>
-              <ProductDetailView product={selProduct} onProduct={goToProduct} isOwn={selProduct.sellerId===user.id} onAddToCart={addToCart} showToast={showToast}/>
+              <ProductDetailView product={selProduct} onProduct={goToProduct} isOwn={selProduct.sellerId===user.id} onAddToCart={addToCart} showToast={showToast} T={T}/>
             </motion.div>
           )}
         </AnimatePresence>
       </main>
 
       {/* BOTTOM NAV */}
-      <nav style={{ position:'fixed', bottom:0, left:0, right:0, background:'rgba(255,255,255,0.97)', backdropFilter:'blur(12px)', borderTop:`1px solid ${T.line}`, zIndex:100, paddingBottom:'env(safe-area-inset-bottom)' }}>
+      <nav style={{ position:'fixed', bottom:0, left:0, right:0, background: darkMode ? 'rgba(26,26,26,0.97)' : 'rgba(255,255,255,0.97)', backdropFilter:'blur(12px)', borderTop:`1px solid ${T.line}`, zIndex:100, paddingBottom:'env(safe-area-inset-bottom)' }}>
         <div style={{ display:'flex', justifyContent:'space-around', maxWidth:480, margin:'0 auto', padding:'6px 0' }}>
           {([
             {v:'home' as NavName, icon:<Home size={21}/>, label:'Home'},
@@ -684,19 +810,18 @@ export function App() {
 }
 
 // ── HOME VIEW ──────────────────────────────────────────────
-function HomeView({ products, loading, selectedCat, setSelectedCat, onProduct, onAddToCart }:
+function HomeView({ products, loading, selectedCat, setSelectedCat, onProduct, onAddToCart, T }:
   { products:Product[]; loading:boolean; selectedCat:Category|'All'; setSelectedCat:(c:Category|'All')=>void;
-    onProduct:(p:Product)=>void; onAddToCart:(p:Product,qty?:number)=>void; }) {
+    onProduct:(p:Product)=>void; onAddToCart:(p:Product,qty?:number)=>void; T:Tokens }) {
   return (
     <div>
       {/* Hero Banner */}
       <div style={{ background:`linear-gradient(135deg, ${T.forest} 0%, #1a3320 100%)`, padding:'40px 20px 36px', position:'relative', overflow:'hidden' }}>
-        {/* Decorative circles */}
         <div style={{ position:'absolute', top:-60, right:-60, width:200, height:200, borderRadius:'50%', background:'rgba(255,255,255,0.04)', pointerEvents:'none' }}/>
         <div style={{ position:'absolute', bottom:-40, left:-40, width:160, height:160, borderRadius:'50%', background:'rgba(255,255,255,0.03)', pointerEvents:'none' }}/>
         <div style={{ position:'relative', zIndex:1, maxWidth:700, margin:'0 auto', textAlign:'center' }}>
           <div style={{ display:'inline-flex', alignItems:'center', gap:8, background:'rgba(255,255,255,0.1)', borderRadius:100, padding:'6px 16px', marginBottom:20 }}>
-            <span style={{ width:6, height:6, borderRadius:'50%', background:T.gold, display:'block' }}/>
+            <span style={{ width:6, height:6, borderRadius:'50%', background:'#C9A84C', display:'block' }}/>
             <span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.75rem', color:'rgba(255,255,255,0.8)', letterSpacing:'0.1em', textTransform:'uppercase', fontWeight:500 }}>Handcrafted with love</span>
           </div>
           <h1 style={{ fontFamily:'"Playfair Display",serif', fontSize:'clamp(2rem,6vw,3.5rem)', fontWeight:900, color:'#fff', lineHeight:1.1, letterSpacing:'-0.02em', marginBottom:16 }}>
@@ -705,15 +830,16 @@ function HomeView({ products, loading, selectedCat, setSelectedCat, onProduct, o
           <p style={{ fontFamily:'"Crimson Pro",serif', fontSize:'clamp(1rem,2.5vw,1.2rem)', color:'rgba(255,255,255,0.7)', lineHeight:1.7, maxWidth:480, margin:'0 auto 28px', fontStyle:'italic' }}>
             A curated marketplace of authentic handcrafted goods, made with care by skilled artisans across India.
           </p>
-          {/* Stats row */}
-          <div style={{ display:'flex', justifyContent:'center', gap:8, flexWrap:'wrap' }}>
-            {[['70+','Products'],['500+','Artisans'],['4.9★','Rating'],['100%','Handmade']].map(([v,l]) => (
+          {/* Stats row — only product count and sellers */}
+          <div style={{ display:'flex', justifyContent:'center', gap:8, flexWrap:'wrap', marginBottom:24 }}>
+            {[[`${products.length > 0 ? products.length : '70'}+`,'Products'],['500+','Artisans']].map(([v,l]) => (
               <div key={l} style={{ background:'rgba(255,255,255,0.1)', borderRadius:12, padding:'12px 20px', backdropFilter:'blur(4px)', border:'1px solid rgba(255,255,255,0.12)' }}>
                 <p style={{ fontFamily:'"Playfair Display",serif', fontSize:'1.3rem', fontWeight:700, color:'#fff', lineHeight:1, marginBottom:3 }}>{v}</p>
                 <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.68rem', color:'rgba(255,255,255,0.6)', letterSpacing:'0.08em', textTransform:'uppercase' }}>{l}</p>
               </div>
             ))}
           </div>
+
         </div>
       </div>
 
@@ -724,7 +850,7 @@ function HomeView({ products, loading, selectedCat, setSelectedCat, onProduct, o
             const m = CAT_META[cat]; const active = selectedCat===cat;
             return (
               <button key={cat} onClick={()=>setSelectedCat(cat)}
-                style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 16px', borderRadius:100, border:`1.5px solid ${active?m.color:T.line}`, background:active?m.bg:T.white, color:active?m.color:T.inkL, fontFamily:'"Inter",sans-serif', fontSize:'0.78rem', fontWeight:active?600:400, cursor:'pointer', whiteSpace:'nowrap', transition:'all .15s' }}>
+                style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 16px', borderRadius:100, border:`1.5px solid ${active?m.color:T.line}`, background:active?m.bg:T.paper, color:active?m.color:T.inkL, fontFamily:'"Inter",sans-serif', fontSize:'0.78rem', fontWeight:active?600:400, cursor:'pointer', whiteSpace:'nowrap', transition:'all .15s' }}>
                 <span style={{ fontSize:'0.9rem' }}>{m.emoji}</span> {m.label}
               </button>
             );
@@ -745,36 +871,37 @@ function HomeView({ products, loading, selectedCat, setSelectedCat, onProduct, o
             </div>
           </motion.div>
         )}
-        {loading ? <Spinner label="Discovering handcrafted wares…"/> : products.length===0 ? (
+        {loading ? <Spinner label="Discovering handcrafted wares…" T={T}/> : products.length===0 ? (
           <div style={{ textAlign:'center', padding:'80px 20px' }}>
             <div style={{ fontSize:'3rem', marginBottom:16 }}>🌿</div>
             <p style={{ fontFamily:'"Playfair Display",serif', fontSize:'1.2rem', color:T.inkM, fontStyle:'italic' }}>No items found</p>
             <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.85rem', color:T.inkL, marginTop:8 }}>Try a different category or search term</p>
           </div>
         ) : (
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))', gap:20 }}>
+          /* ── GRID: 2 cols on mobile, auto-fill on larger ── */
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(2, 1fr)', gap:12 }}
+            className="products-grid">
+            <style>{`@media(min-width:600px){.products-grid{grid-template-columns:repeat(auto-fill,minmax(200px,1fr))!important;gap:20px!important;}}`}</style>
             {products.map((p,i) => (
               <motion.div key={p.id} initial={{opacity:0,y:20}} animate={{opacity:1,y:0}} transition={{delay:Math.min(i*.04,.6)}}
                 className="card-hover" onClick={()=>onProduct(p)}
-                style={{ background:T.white, borderRadius:16, overflow:'hidden', cursor:'pointer', boxShadow:`0 2px 12px ${T.shadow}`, border:`1px solid ${T.line}` }}>
-                <div style={{ aspectRatio:'4/3', overflow:'hidden', position:'relative', background:T.paper }}>
+                style={{ background:T.white, borderRadius:14, overflow:'hidden', cursor:'pointer', boxShadow:`0 2px 10px ${T.shadow}`, border:`1px solid ${T.line}` }}>
+                <div style={{ aspectRatio:'1', overflow:'hidden', position:'relative', background:T.paper }}>
                   <img src={p.imageUrl} alt={p.name} style={{ width:'100%', height:'100%', objectFit:'cover', transition:'transform .4s' }}
                     onMouseEnter={e=>(e.currentTarget as HTMLImageElement).style.transform='scale(1.06)'}
                     onMouseLeave={e=>(e.currentTarget as HTMLImageElement).style.transform='scale(1)'}/>
-                  <div style={{ position:'absolute', top:10, left:10, background:'rgba(255,255,255,0.92)', borderRadius:100, padding:'3px 10px', backdropFilter:'blur(4px)' }}>
-                    <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.62rem', fontWeight:600, color:T.inkM, letterSpacing:'0.06em' }}>{p.category}</p>
+                  <div style={{ position:'absolute', top:8, left:8, background:'rgba(255,255,255,0.9)', borderRadius:100, padding:'2px 8px', backdropFilter:'blur(4px)' }}>
+                    <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.58rem', fontWeight:600, color:T.inkM, letterSpacing:'0.06em' }}>{p.category}</p>
                   </div>
                 </div>
-                <div style={{ padding:'14px' }}>
-                  <h3 style={{ fontFamily:'"Playfair Display",serif', fontStyle:'italic', fontSize:'0.95rem', fontWeight:600, color:T.ink, marginBottom:4, lineHeight:1.35, ...clamp(2) }}>{p.name}</h3>
-                  <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', color:T.inkL, marginBottom:12 }}>by {p.sellerName}</p>
+                <div style={{ padding:'10px 12px' }}>
+                  <h3 style={{ fontFamily:'"Playfair Display",serif', fontStyle:'italic', fontSize:'0.88rem', fontWeight:600, color:T.ink, marginBottom:3, lineHeight:1.3, ...clamp(2) }}>{p.name}</h3>
+                  <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.68rem', color:T.inkL, marginBottom:8 }}>by {p.sellerName}</p>
                   <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                    <span style={{ fontFamily:'"Playfair Display",serif', fontSize:'1.1rem', fontWeight:700, color:T.ink }}>₹{p.price}</span>
+                    <span style={{ fontFamily:'"Playfair Display",serif', fontSize:'1rem', fontWeight:700, color:T.ink }}>₹{p.price}</span>
                     <button onClick={e=>{ e.stopPropagation(); onAddToCart(p); }}
-                      style={{ display:'flex', alignItems:'center', gap:5, padding:'7px 12px', background:T.forest, color:'#fff', border:'none', borderRadius:8, fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', fontWeight:600, cursor:'pointer', transition:'background .15s' }}
-                      onMouseEnter={e=>(e.currentTarget as HTMLButtonElement).style.background=T.forestM}
-                      onMouseLeave={e=>(e.currentTarget as HTMLButtonElement).style.background=T.forest}>
-                      <ShoppingCart size={12}/> Add
+                      style={{ display:'flex', alignItems:'center', gap:4, padding:'6px 10px', background:T.forest, color:'#fff', border:'none', borderRadius:7, fontFamily:'"Inter",sans-serif', fontSize:'0.68rem', fontWeight:600, cursor:'pointer' }}>
+                      <ShoppingCart size={11}/> Add
                     </button>
                   </div>
                 </div>
@@ -788,8 +915,8 @@ function HomeView({ products, loading, selectedCat, setSelectedCat, onProduct, o
 }
 
 // ── PRODUCT DETAIL ─────────────────────────────────────────
-function ProductDetailView({ product:init, onProduct, isOwn, onAddToCart, showToast }:
-  { product:Product; onProduct:(p:Product)=>void; isOwn:boolean; onAddToCart:(p:Product,qty:number)=>void; showToast:(m:string,t?:'success'|'error')=>void; }) {
+function ProductDetailView({ product:init, onProduct, isOwn, onAddToCart, showToast, T }:
+  { product:Product; onProduct:(p:Product)=>void; isOwn:boolean; onAddToCart:(p:Product,qty:number)=>void; showToast:(m:string,t?:'success'|'error')=>void; T:Tokens }) {
   const [product, setProduct] = useState<Product>(init);
   const [related, setRelated] = useState<Product[]>([]);
   const [reviews, setReviews] = useState<Review[]>([]);
@@ -806,8 +933,7 @@ function ProductDetailView({ product:init, onProduct, isOwn, onAddToCart, showTo
   const rating = parseFloat(avgRating??product.rating?.toString()??'4.5');
 
   return (
-    <div style={{ maxWidth:1100, margin:'0 auto' }}>
-      {/* Breadcrumb */}
+    <div style={{ background:T.offwhite }}>
       <div style={{ padding:'12px 20px', display:'flex', alignItems:'center', gap:6, fontSize:'0.78rem', color:T.inkL, fontFamily:'"Inter",sans-serif', overflowX:'auto', background:T.white, borderBottom:`1px solid ${T.line}` }} className="scrollbar-hide">
         <span style={{ color:T.forest, cursor:'pointer', whiteSpace:'nowrap' }}>Home</span>
         <ChevronRight size={12}/>
@@ -816,51 +942,43 @@ function ProductDetailView({ product:init, onProduct, isOwn, onAddToCart, showTo
         <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{product.name}</span>
       </div>
 
-      <div className="product-split" style={{ display:'grid', gridTemplateColumns:'50% 50%', minHeight:'70vh' }}>
-        {/* Image */}
+      <div className="product-split" style={{ display:'grid', gridTemplateColumns:'50% 50%', minHeight:'70vh', maxWidth:1100, margin:'0 auto' }}>
         <div className="product-split-img" style={{ padding:'24px', position:'sticky', top:70, alignSelf:'start', borderRight:`1px solid ${T.line}` }}>
           <div style={{ borderRadius:16, overflow:'hidden', boxShadow:`0 8px 32px ${T.shadowM}` }}>
             <img src={product.imageUrl} alt={product.name} style={{ width:'100%', aspectRatio:'1', objectFit:'cover', display:'block' }}/>
           </div>
         </div>
 
-        {/* Info */}
         <div style={{ padding:'28px 24px', display:'flex', flexDirection:'column', gap:20 }}>
-          {/* Category tag */}
           <div style={{ display:'inline-flex', alignItems:'center', gap:6, background:CAT_META[product.category]?.bg??T.paper, borderRadius:100, padding:'5px 14px', width:'fit-content' }}>
             <span style={{ fontSize:'0.85rem' }}>{CAT_META[product.category]?.emoji}</span>
             <span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', fontWeight:600, color:CAT_META[product.category]?.color??T.inkM, letterSpacing:'0.06em' }}>{product.category}</span>
           </div>
           <div>
             <h1 style={{ fontFamily:'"Playfair Display",serif', fontStyle:'italic', fontSize:'clamp(1.4rem,3vw,2rem)', fontWeight:700, color:T.ink, lineHeight:1.2, marginBottom:12 }}>{product.name}</h1>
-            {/* Rating */}
-            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-              <div style={{ display:'flex', gap:2 }}>
-                {[1,2,3,4,5].map(s => <Star key={s} size={14} fill={s<=Math.round(rating)?T.gold:'none'} color={s<=Math.round(rating)?T.gold:T.lineD}/>)}
+            {reviews.length > 0 && (
+              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                <div style={{ display:'flex', gap:2 }}>
+                  {[1,2,3,4,5].map(s => <Star key={s} size={14} fill={s<=Math.round(rating)?'#C9A84C':'none'} color={s<=Math.round(rating)?'#C9A84C':T.lineD}/>)}
+                </div>
+                <span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', fontWeight:600, color:T.inkM }}>{rating.toFixed(1)}</span>
+                <span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.78rem', color:T.inkL }}>({reviews.length} reviews)</span>
               </div>
-              <span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', fontWeight:600, color:T.inkM }}>{rating.toFixed(1)}</span>
-              <span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.78rem', color:T.inkL }}>({reviews.length} reviews)</span>
-            </div>
+            )}
           </div>
 
-          {/* Price */}
           <div style={{ background:T.paper, borderRadius:14, padding:'18px 20px', display:'flex', alignItems:'center', gap:20 }}>
             <div>
               <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', color:T.inkL, marginBottom:4, fontWeight:500 }}>PRICE</p>
               <p style={{ fontFamily:'"Playfair Display",serif', fontSize:'2rem', fontWeight:700, color:T.ink, lineHeight:1 }}>₹{product.price}</p>
             </div>
             <div style={{ height:48, width:1, background:T.line }}/>
-            <div>
-              <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', color:T.inkL, marginBottom:4, fontWeight:500, textDecoration:'line-through' }}>₹{Math.round(product.price*1.2)}</p>
-              <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', fontWeight:700, color:'#2D7A2D' }}>17% OFF</p>
-            </div>
             <div style={{ marginLeft:'auto', fontFamily:'"Inter",sans-serif', fontSize:'0.78rem', color:'#2D7A2D', fontWeight:600, display:'flex', alignItems:'center', gap:4 }}>
               <span style={{ width:8, height:8, borderRadius:'50%', background:'#2D7A2D', display:'block' }}/>
               In Stock
             </div>
           </div>
 
-          {/* Seller */}
           <div style={{ display:'flex', alignItems:'center', gap:14, padding:'14px 16px', background:T.white, borderRadius:14, border:`1px solid ${T.line}` }}>
             <div style={{ width:44, height:44, borderRadius:'50%', background:T.forest, display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontFamily:'"Playfair Display",serif', fontSize:'1.1rem', fontWeight:700, flexShrink:0 }}>{product.sellerName[0]}</div>
             <div style={{ flex:1, minWidth:0 }}>
@@ -872,7 +990,6 @@ function ProductDetailView({ product:init, onProduct, isOwn, onAddToCart, showTo
             </div>
           </div>
 
-          {/* Delivery info */}
           <div style={{ display:'flex', flexDirection:'column', gap:10, padding:'14px 16px', background:T.offwhite, borderRadius:14, border:`1px solid ${T.line}` }}>
             {([[<Truck size={14}/>, 'Free delivery on orders above ₹50'],[<Clock size={14}/>, 'Ships in 3–5 business days'],[<Shield size={14}/>, '7-day easy returns']] as [React.ReactNode,string][]).map(([icon,text],i) => (
               <div key={i} style={{ display:'flex', alignItems:'center', gap:10 }}>
@@ -882,7 +999,6 @@ function ProductDetailView({ product:init, onProduct, isOwn, onAddToCart, showTo
             ))}
           </div>
 
-          {/* Qty */}
           <div style={{ display:'flex', alignItems:'center', gap:14 }}>
             <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.78rem', fontWeight:600, color:T.inkL, textTransform:'uppercase', letterSpacing:'0.08em' }}>Quantity</p>
             <div style={{ display:'flex', alignItems:'center', background:T.paper, borderRadius:10, border:`1px solid ${T.line}`, overflow:'hidden' }}>
@@ -892,7 +1008,6 @@ function ProductDetailView({ product:init, onProduct, isOwn, onAddToCart, showTo
             </div>
           </div>
 
-          {/* CTA buttons */}
           {!isOwn ? (
             <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
               <button onClick={()=>{ setCartDone(true); setTimeout(()=>setCartDone(false),2000); onAddToCart(product,qty); }}
@@ -908,7 +1023,6 @@ function ProductDetailView({ product:init, onProduct, isOwn, onAddToCart, showTo
             <div style={{ padding:'14px', background:T.forestXL, borderRadius:12, textAlign:'center', fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', color:T.forest, fontWeight:600 }}>✦ This is your listing</div>
           )}
 
-          {/* Trust badges */}
           <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10 }}>
             {[{icon:<Shield size={18}/>,t:'Secure',d:'SSL checkout'},{icon:<RefreshCw size={18}/>,t:'Returns',d:'7 days'},{icon:<Package size={18}/>,t:'Gift Wrap',d:'Free'}].map(({icon,t,d}) => (
               <div key={t} style={{ background:T.paper, borderRadius:12, padding:'12px 8px', textAlign:'center', border:`1px solid ${T.line}` }}>
@@ -921,7 +1035,6 @@ function ProductDetailView({ product:init, onProduct, isOwn, onAddToCart, showTo
         </div>
       </div>
 
-      {/* Description */}
       <div style={{ padding:'32px 24px', borderTop:`1px solid ${T.line}`, background:T.white }}>
         <div style={{ maxWidth:800, margin:'0 auto' }}>
           <h2 style={{ fontFamily:'"Playfair Display",serif', fontSize:'1.2rem', fontWeight:700, color:T.ink, marginBottom:16 }}>About This Piece</h2>
@@ -937,14 +1050,13 @@ function ProductDetailView({ product:init, onProduct, isOwn, onAddToCart, showTo
         </div>
       </div>
 
-      {/* Reviews */}
       {reviews.length>0 && (
         <div style={{ padding:'32px 24px', borderTop:`1px solid ${T.line}` }}>
           <div style={{ maxWidth:800, margin:'0 auto' }}>
             <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:24, flexWrap:'wrap' }}>
               <h2 style={{ fontFamily:'"Playfair Display",serif', fontSize:'1.2rem', fontWeight:700, color:T.ink }}>Customer Reviews</h2>
               <div style={{ display:'flex', alignItems:'center', gap:6, background:T.paper, borderRadius:100, padding:'4px 12px' }}>
-                <Star size={13} fill={T.gold} color={T.gold}/>
+                <Star size={13} fill='#C9A84C' color='#C9A84C'/>
                 <span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.78rem', fontWeight:700, color:T.ink }}>{avgRating??'4.5'}</span>
                 <span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', color:T.inkL }}>({reviews.length})</span>
               </div>
@@ -956,7 +1068,7 @@ function ProductDetailView({ product:init, onProduct, isOwn, onAddToCart, showTo
                     <div style={{ width:36, height:36, borderRadius:'50%', background:T.forest, display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontFamily:'"Inter",sans-serif', fontSize:'0.8rem', fontWeight:700 }}>{r.buyerName[0]}</div>
                     <div>
                       <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', fontWeight:600, color:T.ink, marginBottom:3 }}>{r.buyerName}</p>
-                      <div style={{ display:'flex', gap:2 }}>{[1,2,3,4,5].map(s=><Star key={s} size={11} fill={s<=r.rating?T.gold:'none'} color={s<=r.rating?T.gold:T.lineD}/>)}</div>
+                      <div style={{ display:'flex', gap:2 }}>{[1,2,3,4,5].map(s=><Star key={s} size={11} fill={s<=r.rating?'#C9A84C':'none'} color={s<=r.rating?'#C9A84C':T.lineD}/>)}</div>
                     </div>
                     <span style={{ marginLeft:'auto', fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', color:T.inkL }}>{new Date(r.createdAt).toLocaleDateString('en-IN',{year:'numeric',month:'short',day:'numeric'})}</span>
                   </div>
@@ -968,7 +1080,6 @@ function ProductDetailView({ product:init, onProduct, isOwn, onAddToCart, showTo
         </div>
       )}
 
-      {/* Related */}
       {related.length>0 && (
         <div style={{ padding:'32px 24px 48px', borderTop:`1px solid ${T.line}`, background:T.offwhite }}>
           <h2 style={{ fontFamily:'"Playfair Display",serif', fontSize:'1.2rem', fontWeight:700, color:T.ink, marginBottom:20 }}>More from {product.category}</h2>
@@ -976,9 +1087,7 @@ function ProductDetailView({ product:init, onProduct, isOwn, onAddToCart, showTo
             {related.map(p => (
               <div key={p.id} className="card-hover" onClick={()=>onProduct(p)} style={{ background:T.white, borderRadius:14, overflow:'hidden', cursor:'pointer', boxShadow:`0 2px 10px ${T.shadow}`, border:`1px solid ${T.line}` }}>
                 <div style={{ aspectRatio:'4/3', overflow:'hidden' }}>
-                  <img src={p.imageUrl} alt={p.name} style={{ width:'100%', height:'100%', objectFit:'cover', transition:'transform .35s' }}
-                    onMouseEnter={e=>(e.currentTarget as HTMLImageElement).style.transform='scale(1.06)'}
-                    onMouseLeave={e=>(e.currentTarget as HTMLImageElement).style.transform='scale(1)'}/>
+                  <img src={p.imageUrl} alt={p.name} style={{ width:'100%', height:'100%', objectFit:'cover', transition:'transform .35s' }}/>
                 </div>
                 <div style={{ padding:'12px 14px' }}>
                   <h3 style={{ fontFamily:'"Playfair Display",serif', fontStyle:'italic', fontSize:'0.88rem', color:T.ink, marginBottom:6, ...clamp(2) }}>{p.name}</h3>
@@ -997,7 +1106,7 @@ function ProductDetailView({ product:init, onProduct, isOwn, onAddToCart, showTo
 }
 
 // ── SELL VIEW ──────────────────────────────────────────────
-function SellView({ onAdd }:{ onAdd:(p:Partial<Product>)=>Promise<void> }) {
+function SellView({ onAdd, T }:{ onAdd:(p:Partial<Product>)=>Promise<void>; T:Tokens }) {
   const [f, setF] = useState({ name:'', description:'', price:'', category:'Other' as Category, imageUrl:'' });
   const [submitting, setSubmitting] = useState(false);
   const inp:React.CSSProperties = { width:'100%', marginTop:6, padding:'11px 14px', background:T.offwhite, border:`1.5px solid ${T.line}`, borderRadius:10, fontSize:'0.9rem', outline:'none', color:T.ink, fontFamily:'"Inter",sans-serif', transition:'border-color .2s' };
@@ -1021,7 +1130,7 @@ function SellView({ onAdd }:{ onAdd:(p:Partial<Product>)=>Promise<void> }) {
           <div><label style={lbl}>Item Name *</label><input type="text" placeholder="e.g. Hand-carved Wooden Bowl" value={f.name} onChange={e=>setF({...f,name:e.target.value})} style={inp}/></div>
           <div>
             <label style={lbl}>Product Photo *</label>
-            <div style={{ marginTop:8 }}><ImageUploader value={f.imageUrl} onChange={url=>setF({...f,imageUrl:url})}/></div>
+            <div style={{ marginTop:8 }}><ImageUploader value={f.imageUrl} onChange={url=>setF({...f,imageUrl:url})} T={T}/></div>
           </div>
           <div className="sell-grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
             <div><label style={lbl}>Price (₹) *</label><input type="number" placeholder="0.00" value={f.price} onChange={e=>setF({...f,price:e.target.value})} style={inp}/></div>
@@ -1043,7 +1152,7 @@ function SellView({ onAdd }:{ onAdd:(p:Partial<Product>)=>Promise<void> }) {
 }
 
 // ── PROFILE VIEW ───────────────────────────────────────────
-function ProfileView({ user, onProduct, onLogout }:{ user:AppUser; onProduct:(p:Product)=>void; onLogout:()=>void }) {
+function ProfileView({ user, onProduct, onLogout, T }:{ user:AppUser; onProduct:(p:Product)=>void; onLogout:()=>void; T:Tokens }) {
   const [myProducts, setMyProducts] = useState<Product[]>([]);
   const [loading, setLoading]       = useState(true);
   const [deletingId, setDeletingId] = useState<string|null>(null);
@@ -1066,7 +1175,6 @@ function ProfileView({ user, onProduct, onLogout }:{ user:AppUser; onProduct:(p:
 
   return (
     <div style={{ maxWidth:960, margin:'0 auto' }}>
-      {/* Profile card */}
       <div style={{ background:T.white, borderRadius:20, padding:'28px', marginBottom:28, boxShadow:`0 4px 24px ${T.shadow}`, border:`1px solid ${T.line}`, display:'flex', alignItems:'center', gap:20, flexWrap:'wrap' }}>
         <div style={{ width:72, height:72, borderRadius:'50%', background:T.forest, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
           <User size={36} color="#fff"/>
@@ -1081,11 +1189,12 @@ function ProfileView({ user, onProduct, onLogout }:{ user:AppUser; onProduct:(p:
 
       {isSeller && (
         <>
-          <div className="stats-grid" style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:14, marginBottom:28 }}>
-            {[['Items Listed',myProducts.length,'📦'],['Pieces Sold',24,'✨'],['Happy Patrons',142,'❤️']].map(([l,v,e]) => (
+          {/* Stats — product count and sellers only */}
+          <div className="stats-grid" style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:14, marginBottom:28 }}>
+            {[['Items Listed',myProducts.length,'📦'],['My Shop',user.name,'🏪']].map(([l,v,e]) => (
               <div key={String(l)} style={{ background:T.white, borderRadius:16, padding:'20px 16px', textAlign:'center', boxShadow:`0 2px 10px ${T.shadow}`, border:`1px solid ${T.line}` }}>
                 <p style={{ fontSize:'1.5rem', marginBottom:8 }}>{e}</p>
-                <p style={{ fontFamily:'"Playfair Display",serif', fontSize:'1.8rem', fontWeight:700, color:T.forest, marginBottom:4 }}>{v}</p>
+                <p style={{ fontFamily:'"Playfair Display",serif', fontSize:typeof v==='number'?'1.8rem':'1.1rem', fontWeight:700, color:T.forest, marginBottom:4 }}>{v}</p>
                 <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.7rem', color:T.inkL, fontWeight:500, textTransform:'uppercase', letterSpacing:'0.08em' }}>{l}</p>
               </div>
             ))}
@@ -1094,7 +1203,7 @@ function ProfileView({ user, onProduct, onLogout }:{ user:AppUser; onProduct:(p:
             <h3 style={{ fontFamily:'"Playfair Display",serif', fontSize:'1.2rem', fontWeight:700, color:T.ink }}>My Listings</h3>
             <span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.78rem', color:T.inkL }}>{myProducts.length} items</span>
           </div>
-          {loading ? <Spinner/> : myProducts.length===0 ? (
+          {loading ? <Spinner T={T}/> : myProducts.length===0 ? (
             <div style={{ textAlign:'center', padding:'60px 20px', background:T.white, borderRadius:20, border:`1px solid ${T.line}` }}>
               <p style={{ fontFamily:'"Playfair Display",serif', fontStyle:'italic', color:T.inkM, fontSize:'1.1rem' }}>No listings yet</p>
               <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.85rem', color:T.inkL, marginTop:8 }}>Start listing your handcrafted items!</p>
@@ -1139,16 +1248,35 @@ function ProfileView({ user, onProduct, onLogout }:{ user:AppUser; onProduct:(p:
 }
 
 // ── LOGIN VIEW ─────────────────────────────────────────────
-function LoginView({ onLogin }:{ onLogin:(u:{role:'buyer'|'seller';name:string;id:string})=>void }) {
+const DEMO_ACCOUNTS = [
+  { label:'Guest Buyer', email:'buyer@demo.com', password:'password123', icon:'🛍️', desc:'Browse & buy' },
+  { label:'Seller Demo', email:'u1@artisanbazaar.com', password:'password123', icon:'🏪', desc:'List & sell' },
+];
+
+function LoginView({ onLogin, T }:{ onLogin:(u:{role:'buyer'|'seller';name:string;id:string})=>void; T:Tokens }) {
   const [email, setEmail]   = useState('');
   const [pass, setPass]     = useState('');
   const [name, setName]     = useState('');
   const [isReg, setIsReg]   = useState(false);
   const [loading, setLoading] = useState(false);
+  const [demoLoading, setDemoLoading] = useState<string|null>(null);
   const [error, setError]   = useState('');
 
   const inp:React.CSSProperties = { width:'100%', marginTop:6, padding:'12px 14px', background:T.offwhite, border:`1.5px solid ${T.line}`, borderRadius:10, fontSize:'0.92rem', outline:'none', color:T.ink, fontFamily:'"Inter",sans-serif', transition:'border-color .2s' };
   const lbl:React.CSSProperties = { fontFamily:'"Inter",sans-serif', fontSize:'0.75rem', fontWeight:600, color:T.inkL };
+
+  const doLogin = async (e:string, p:string, demoLabel?:string) => {
+    setError('');
+    if (demoLabel) setDemoLoading(demoLabel); else setLoading(true);
+    try {
+      const res = await api.auth.login(e, p);
+      onLogin({role:res.user.role,name:res.user.shopName??res.user.name,id:res.user.id});
+    } catch(err) {
+      if (err instanceof ApiError) setError(err.message);
+      else if (err instanceof TypeError) setError('Cannot reach server. Please wait 30 seconds and try again.');
+      else setError('Something went wrong. Please try again.');
+    } finally { setLoading(false); setDemoLoading(null); }
+  };
 
   const submit = async () => {
     setError(''); setLoading(true);
@@ -1165,7 +1293,6 @@ function LoginView({ onLogin }:{ onLogin:(u:{role:'buyer'|'seller';name:string;i
   return (
     <div style={{ minHeight:'80vh', display:'flex', alignItems:'center', justifyContent:'center', padding:'32px 16px' }}>
       <div style={{ width:'100%', maxWidth:420 }}>
-        {/* Logo */}
         <div style={{ textAlign:'center', marginBottom:32 }}>
           <div style={{ width:60, height:60, background:T.forest, borderRadius:18, display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 16px' }}>
             <Leaf size={30} color="#fff"/>
@@ -1178,10 +1305,44 @@ function LoginView({ onLogin }:{ onLogin:(u:{role:'buyer'|'seller';name:string;i
           </p>
         </div>
 
+        {/* ── DEMO ACCOUNT QUICK-LOGIN BUTTONS ── */}
+        {!isReg && (
+          <div style={{ marginBottom:20 }}>
+            <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', fontWeight:700, color:T.inkL, textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:10, textAlign:'center' }}>Quick Access — Demo Accounts</p>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+              {DEMO_ACCOUNTS.map(acc => (
+                <button key={acc.label} onClick={()=>doLogin(acc.email, acc.password, acc.label)}
+                  disabled={!!demoLoading || loading}
+                  style={{ padding:'14px 12px', background:T.paper, border:`1.5px solid ${T.line}`, borderRadius:12, cursor:'pointer', textAlign:'left', transition:'border-color .15s, box-shadow .15s', position:'relative', opacity:(demoLoading&&demoLoading!==acc.label)?0.5:1 }}
+                  onMouseEnter={e=>{ (e.currentTarget as HTMLButtonElement).style.borderColor=T.forest; (e.currentTarget as HTMLButtonElement).style.boxShadow=`0 4px 16px ${T.shadow}`; }}
+                  onMouseLeave={e=>{ (e.currentTarget as HTMLButtonElement).style.borderColor=T.line; (e.currentTarget as HTMLButtonElement).style.boxShadow='none'; }}>
+                  {demoLoading===acc.label ? (
+                    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8, padding:'4px 0' }}>
+                      <Loader2 size={16} color={T.forest} style={{animation:'spin 1s linear infinite'}}/>
+                      <span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.78rem', color:T.forest }}>Signing in…</span>
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ fontSize:'1.4rem', marginBottom:6 }}>{acc.icon}</div>
+                      <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', fontWeight:700, color:T.ink, marginBottom:2 }}>{acc.label}</p>
+                      <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.7rem', color:T.inkL }}>{acc.desc}</p>
+                    </>
+                  )}
+                </button>
+              ))}
+            </div>
+            <div style={{ display:'flex', alignItems:'center', gap:10, margin:'16px 0' }}>
+              <div style={{ flex:1, height:1, background:T.line }}/>
+              <span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', color:T.inkL, fontWeight:500 }}>or sign in manually</span>
+              <div style={{ flex:1, height:1, background:T.line }}/>
+            </div>
+          </div>
+        )}
+
         <div style={{ background:T.white, borderRadius:20, padding:'28px', boxShadow:`0 8px 40px ${T.shadowM}`, border:`1px solid ${T.line}` }}>
           {error && (
             <div style={{ padding:'12px 14px', background:'#FFF0EE', border:'1px solid #F5C5BE', borderRadius:10, display:'flex', alignItems:'center', gap:8, marginBottom:20 }}>
-              <AlertCircle size={14} color={T.rust}/><span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.85rem', color:T.rust }}>{error}</span>
+              <AlertCircle size={14} color="#9B3D2A"/><span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.85rem', color:'#9B3D2A' }}>{error}</span>
             </div>
           )}
           <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
@@ -1212,13 +1373,6 @@ function LoginView({ onLogin }:{ onLogin:(u:{role:'buyer'|'seller';name:string;i
               {isReg?'Sign in':'Create account'}
             </button>
           </p>
-        </div>
-
-        {/* Demo accounts */}
-        <div style={{ marginTop:16, background:T.forestXL, borderRadius:14, padding:'14px 18px', border:`1px solid ${T.forestXL}` }}>
-          <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', fontWeight:700, color:T.forest, textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:8 }}>Demo Accounts</p>
-          <p style={{ fontFamily:'monospace', fontSize:'0.78rem', color:T.forestM, marginBottom:4 }}>buyer@demo.com / password123</p>
-          <p style={{ fontFamily:'monospace', fontSize:'0.78rem', color:T.forestM }}>u1@artisanbazaar.com / password123</p>
         </div>
       </div>
     </div>
