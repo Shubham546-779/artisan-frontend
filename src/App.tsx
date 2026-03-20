@@ -602,11 +602,11 @@ export function App() {
       <AnimatePresence>{cartOpen && <CartDrawer cart={cart} onClose={() => setCartOpen(false)} onUpdateQty={updateCartQty} onRemove={removeFromCart} onClearCart={() => setCart([])} showToast={showToast}/>}</AnimatePresence>
       <AnimatePresence>{showShopModal && <ShopNameModal onConfirm={handleShopConfirm} onClose={() => setShowShopModal(false)}/>}</AnimatePresence>
 
-      {/* TOP ANNOUNCEMENT BAR — empty spacing bar with safe area for notch */}
-      <div style={{ background:'#4a5e3a', height:12, paddingTop:'env(safe-area-inset-top)' }}/>
+      {/* TOP SAFE AREA — only fills notch/status bar height */}
+      <div style={{ background:'#4a5e3a', height:'env(safe-area-inset-top)', minHeight:0, position:'fixed', top:0, left:0, right:0, zIndex:101 }}/>
 
       {/* HEADER */}
-      <header style={{ position:'sticky', top:0, zIndex:100, background:'#ede0c0ee', backdropFilter:'blur(8px)', borderBottom:'2px solid #a89070', boxShadow:'0 3px 16px rgba(44,31,14,0.15)' }}>
+      <header style={{ position:'sticky', top:'env(safe-area-inset-top)', zIndex:100, background:'#ede0c0ee', backdropFilter:'blur(8px)', borderBottom:'2px solid #a89070', boxShadow:'0 3px 16px rgba(44,31,14,0.15)' }}>
         <div style={{ position:'relative', overflow:'hidden' }}>
           <WoodGrain/>
           <div style={{ padding:'0 14px', height:58, display:'flex', alignItems:'center', gap:8, position:'relative', zIndex:1 }}>
