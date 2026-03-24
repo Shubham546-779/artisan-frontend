@@ -53,9 +53,13 @@ const CAT_META: Record<string, { emoji:string; label:string; color:string; bg:st
 };
 
 interface CartItem { product: Product; qty: number; }
-type ViewName = 'home'|'sell'|'profile'|'product'|'login';
-type NavName  = 'home'|'sell'|'profile'|'login';
-interface AppUser { role:'buyer'|'seller'|null; name:string; id:string; }
+type ViewName = 'home'|'sell'|'profile'|'product'|'login'|'admin';
+type NavName  = 'home'|'sell'|'profile'|'login'|'admin';
+interface AppUser { role:'buyer'|'seller'|null; name:string; id:string; email?:string; }
+
+// ── DEVELOPER ID ───────────────────────────────────────────
+// Set this to your developer account email
+const DEV_EMAIL = 'shubhamvairagl0@gmail.com';
 
 // ── HELPERS ────────────────────────────────────────────────
 const clamp = (n:number): React.CSSProperties => ({
@@ -227,20 +231,20 @@ function OrderFormModal({ cart, onClose, onSuccess, T }:{ cart:CartItem[]; onClo
     const err = validate(); if (err) { setError(err); return; }
     setSending(true); setError('');
     try {
-      const ejs = (window as any).emailjs;
-      if (!ejs) throw new Error('EmailJS not loaded');
+      const emailjs = await import('@emailjs/browser');
       const itemsText = cart.map(i=>`• ${i.product.name} (x${i.qty}) — Rs.${(i.product.price*i.qty).toFixed(2)}`).join('\n');
-      await ejs.send(
+      await emailjs.send(
         import.meta.env.VITE_EMAILJS_SERVICE_ID,
         import.meta.env.VITE_EMAILJS_TEMPLATE_ID,
-        { order_id:orderId, customer_name:form.name, customer_email:form.email, to_email:form.email,
+        { order_id:orderId, customer_name:form.name, name:form.name,
+          customer_email:form.email, to_email:form.email, email:form.email,
           mobile:form.mobile, order_items:itemsText, order_total:total.toFixed(2),
           delivery_address:`${form.address}, ${form.city} - ${form.pincode}`,
           order_date:new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'}) },
         import.meta.env.VITE_EMAILJS_PUBLIC_KEY,
       );
       onSuccess();
-    } catch { setError('Could not send confirmation. Please try again.'); }
+    } catch (e) { console.error('EmailJS error:', e); setError('Could not send confirmation. Please try again.'); }
     finally { setSending(false); }
   };
 
@@ -637,7 +641,7 @@ export function App() {
     setView('home'); setSelProduct(null); showToast('Signed out');
   }, [showToast]);
 
-  const handleLogin = useCallback((u:{role:'buyer'|'seller';name:string;id:string}) => {
+  const handleLogin = useCallback((u:{role:'buyer'|'seller';name:string;id:string;email?:string}) => {
     setUser(u); setView('home'); setSelProduct(null); showToast(`Welcome, ${u.name}!`);
   }, [showToast]);
 
@@ -651,6 +655,7 @@ export function App() {
   }, [showToast]);
 
   const cartCount = cart.reduce((s,i)=>s+i.qty,0);
+  const isDev = user.email === DEV_EMAIL || user.name?.toLowerCase().includes('shubham');
 
   return (
     <div style={{ minHeight:'100vh', background:T.offwhite, color:T.ink, fontFamily:'"Inter",sans-serif', paddingBottom:'5rem' }}>
@@ -767,6 +772,13 @@ export function App() {
               <ProductDetailView product={selProduct} onProduct={goToProduct} isOwn={selProduct.sellerId===user.id} onAddToCart={addToCart} showToast={showToast} T={T}/>
             </motion.div>
           )}
+          {view==='admin' && (
+            <motion.div key="admin" initial={{opacity:0,y:16}} animate={{opacity:1,y:0}} exit={{opacity:0}} transition={{duration:.2}}>
+              <div style={{ padding:'24px 16px' }}>
+                <AdminView T={T} showToast={showToast}/>
+              </div>
+            </motion.div>
+          )}
         </AnimatePresence>
       </main>
 
@@ -778,16 +790,17 @@ export function App() {
             {v:'sell' as NavName, icon:<PlusCircle size={21}/>, label:'Sell'},
             {v:'cart' as NavName, icon:<ShoppingCart size={21}/>, label:'Cart'},
             {v:'profile' as NavName, icon:<User size={21}/>, label:'Me'},
+            ...(isDev ? [{v:'admin' as NavName, icon:<Shield size={21}/>, label:'Dev'}] : []),
           ]).map(({v,icon,label}) => {
             const active = view===v||(view==='product'&&v==='home')||(showShopModal&&v==='sell');
             return (
               <button key={v} onClick={()=>v==='cart'?setCartOpen(true):nav(v)}
-                style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:3, padding:'6px 20px', background:'none', border:'none', color:active?T.forest:T.inkL, cursor:'pointer', position:'relative', transition:'color .15s' }}>
-                <div style={{ padding:'4px 12px', borderRadius:10, background:active?T.forestXL:'transparent', transition:'background .15s' }}>
+                style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:3, padding:'6px 16px', background:'none', border:'none', color:active?(v==='admin'?'#7A3D9A':T.forest):T.inkL, cursor:'pointer', position:'relative', transition:'color .15s' }}>
+                <div style={{ padding:'4px 10px', borderRadius:10, background:active?(v==='admin'?'#EDE0F5':T.forestXL):'transparent', transition:'background .15s' }}>
                   {React.cloneElement(icon as React.ReactElement<{strokeWidth:number}>, {strokeWidth:active?2.5:1.8})}
                 </div>
                 <span style={{ fontSize:'0.62rem', fontFamily:'"Inter",sans-serif', fontWeight:active?700:400, letterSpacing:'0.02em' }}>{label}</span>
-                {v==='cart'&&cartCount>0 && <span style={{ position:'absolute', top:2, right:10, background:T.rust, color:'#fff', borderRadius:'50%', width:16, height:16, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'0.55rem', fontWeight:700 }}>{cartCount}</span>}
+                {v==='cart'&&cartCount>0 && <span style={{ position:'absolute', top:2, right:6, background:T.rust, color:'#fff', borderRadius:'50%', width:16, height:16, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'0.55rem', fontWeight:700 }}>{cartCount}</span>}
               </button>
             );
           })}
@@ -1241,7 +1254,7 @@ const DEMO_ACCOUNTS = [
   { label:'Seller Demo', email:'u1@artisanbazaar.com', password:'password123', icon:'🏪', desc:'List & sell' },
 ];
 
-function LoginView({ onLogin, T }:{ onLogin:(u:{role:'buyer'|'seller';name:string;id:string})=>void; T:Tokens }) {
+function LoginView({ onLogin, T }:{ onLogin:(u:{role:'buyer'|'seller';name:string;id:string;email?:string})=>void; T:Tokens }) {
   const [email, setEmail]   = useState('');
   const [pass, setPass]     = useState('');
   const [name, setName]     = useState('');
@@ -1258,7 +1271,7 @@ function LoginView({ onLogin, T }:{ onLogin:(u:{role:'buyer'|'seller';name:strin
     if (demoLabel) setDemoLoading(demoLabel); else setLoading(true);
     try {
       const res = await api.auth.login(e, p);
-      onLogin({role:res.user.role,name:res.user.shopName??res.user.name,id:res.user.id});
+      onLogin({role:res.user.role,name:res.user.shopName??res.user.name,id:res.user.id,email:e});
     } catch(err) {
       if (err instanceof ApiError) setError(err.message);
       else if (err instanceof TypeError) setError('Cannot reach server. Please wait 30 seconds and try again.');
@@ -1270,7 +1283,7 @@ function LoginView({ onLogin, T }:{ onLogin:(u:{role:'buyer'|'seller';name:strin
     setError(''); setLoading(true);
     try {
       const res = isReg ? await api.auth.register({name,email,password:pass,role:'buyer'}) : await api.auth.login(email,pass);
-      onLogin({role:res.user.role,name:res.user.shopName??res.user.name,id:res.user.id});
+      onLogin({role:res.user.role,name:res.user.shopName??res.user.name,id:res.user.id,email});
     } catch(e) {
       if (e instanceof ApiError) setError(e.message);
       else if (e instanceof TypeError) setError('Cannot reach server. Please wait 30 seconds and try again.');
@@ -1363,6 +1376,176 @@ function LoginView({ onLogin, T }:{ onLogin:(u:{role:'buyer'|'seller';name:strin
           </p>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── ADMIN / DEVELOPER VIEW ─────────────────────────────────
+interface SellerGroup { sellerId:string; sellerName:string; products:Product[]; }
+
+function AdminView({ T, showToast }:{ T:Tokens; showToast:(m:string,t?:'success'|'error')=>void }) {
+  const [allProducts, setAllProducts]   = useState<Product[]>([]);
+  const [loading, setLoading]           = useState(true);
+  const [deletingId, setDeletingId]     = useState<string|null>(null);
+  const [confirmId, setConfirmId]       = useState<string|null>(null);
+  const [expandedSeller, setExpandedSeller] = useState<string|null>(null);
+  const [searchSeller, setSearchSeller] = useState('');
+  const [removedIds, setRemovedIds]     = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    setLoading(true);
+    api.products.list({ limit:200 })
+      .then(r => setAllProducts(r.data))
+      .catch(() => showToast('Could not load products','error'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleRemove = async (pid:string, e:React.MouseEvent) => {
+    e.stopPropagation();
+    if (confirmId !== pid) { setConfirmId(pid); return; }
+    setDeletingId(pid); setConfirmId(null);
+    try {
+      await api.products.delete(pid);
+      setRemovedIds(prev => new Set([...prev, pid]));
+      setAllProducts(p => p.filter(x => x.id !== pid));
+      showToast('Product removed from marketplace');
+    } catch { showToast('Could not remove product','error'); }
+    finally { setDeletingId(null); }
+  };
+
+  // Group products by seller
+  const sellers: SellerGroup[] = Object.values(
+    allProducts.reduce((acc, p) => {
+      if (!acc[p.sellerId]) acc[p.sellerId] = { sellerId:p.sellerId, sellerName:p.sellerName, products:[] };
+      acc[p.sellerId].products.push(p);
+      return acc;
+    }, {} as Record<string,SellerGroup>)
+  ).filter(s => s.sellerName.toLowerCase().includes(searchSeller.toLowerCase()));
+
+  const totalProducts = allProducts.length;
+  const totalSellers  = new Set(allProducts.map(p=>p.sellerId)).size;
+
+  return (
+    <div style={{ maxWidth:960, margin:'0 auto' }}>
+      {/* Header */}
+      <div style={{ background:`linear-gradient(135deg,#4A1A7A 0%,#2A0A4A 100%)`, borderRadius:20, padding:'28px', marginBottom:24, position:'relative', overflow:'hidden' }}>
+        <div style={{ position:'absolute', top:-30, right:-30, width:120, height:120, borderRadius:'50%', background:'rgba(255,255,255,0.05)' }}/>
+        <div style={{ position:'relative', zIndex:1 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:16 }}>
+            <div style={{ width:44, height:44, background:'rgba(255,255,255,0.15)', borderRadius:12, display:'flex', alignItems:'center', justifyContent:'center' }}>
+              <Shield size={22} color="#fff"/>
+            </div>
+            <div>
+              <h2 style={{ fontFamily:'"Playfair Display",serif', fontSize:'1.4rem', fontWeight:700, color:'#fff', margin:0 }}>Developer Panel</h2>
+              <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', color:'rgba(255,255,255,0.6)', margin:0, letterSpacing:'0.08em' }}>ARTISAN BAZAAR ADMIN</p>
+            </div>
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12 }}>
+            {[['Total Products',totalProducts,'📦'],['Total Sellers',totalSellers,'🏪'],['Removed Today',removedIds.size,'🗑️']].map(([l,v,e])=>(
+              <div key={String(l)} style={{ background:'rgba(255,255,255,0.1)', borderRadius:12, padding:'12px', textAlign:'center', backdropFilter:'blur(4px)' }}>
+                <p style={{ fontSize:'1.2rem', marginBottom:4 }}>{e}</p>
+                <p style={{ fontFamily:'"Playfair Display",serif', fontSize:'1.4rem', fontWeight:700, color:'#fff', lineHeight:1 }}>{v}</p>
+                <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.62rem', color:'rgba(255,255,255,0.6)', textTransform:'uppercase', letterSpacing:'0.08em', marginTop:4 }}>{l}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Search seller */}
+      <div style={{ position:'relative', marginBottom:20 }}>
+        <Search style={{ position:'absolute', left:14, top:'50%', transform:'translateY(-50%)', color:T.inkL }} size={15}/>
+        <input type="text" placeholder="Search artisan by name…" value={searchSeller} onChange={e=>setSearchSeller(e.target.value)}
+          style={{ width:'100%', paddingLeft:42, paddingRight:16, paddingTop:11, paddingBottom:11, background:T.white, border:`1.5px solid ${T.line}`, borderRadius:12, fontSize:'0.88rem', outline:'none', color:T.ink, fontFamily:'"Inter",sans-serif' }}/>
+      </div>
+
+      {loading ? <Spinner label="Loading all artisans…" T={T}/> : sellers.length===0 ? (
+        <div style={{ textAlign:'center', padding:'60px 20px' }}>
+          <p style={{ fontFamily:'"Playfair Display",serif', fontStyle:'italic', color:T.inkM, fontSize:'1.1rem' }}>No artisans found</p>
+        </div>
+      ) : (
+        <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+          {sellers.map(seller => {
+            const isOpen = expandedSeller === seller.sellerId;
+            return (
+              <div key={seller.sellerId} style={{ background:T.white, borderRadius:16, border:`1px solid ${T.line}`, overflow:'hidden', boxShadow:`0 2px 10px ${T.shadow}` }}>
+                {/* Seller header — click to expand */}
+                <button onClick={()=>setExpandedSeller(isOpen?null:seller.sellerId)}
+                  style={{ width:'100%', padding:'16px 20px', background:'none', border:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:14, textAlign:'left' }}>
+                  <div style={{ width:44, height:44, borderRadius:'50%', background:'linear-gradient(135deg,#4A1A7A,#7A3AB0)', display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontFamily:'"Playfair Display",serif', fontSize:'1.1rem', fontWeight:700, flexShrink:0 }}>
+                    {seller.sellerName[0]?.toUpperCase()}
+                  </div>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <p style={{ fontFamily:'"Playfair Display",serif', fontStyle:'italic', fontSize:'1rem', fontWeight:700, color:T.ink, margin:0 }}>{seller.sellerName}</p>
+                    <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', color:T.inkL, margin:'2px 0 0' }}>{seller.products.length} product{seller.products.length!==1?'s':''} listed</p>
+                  </div>
+                  <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                    <div style={{ background:T.forestXL, borderRadius:8, padding:'4px 10px' }}>
+                      <span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.68rem', color:T.forest, fontWeight:600 }}>
+                        {seller.products.length} items
+                      </span>
+                    </div>
+                    <ChevronRight size={16} color={T.inkL} style={{ transform:isOpen?'rotate(90deg)':'rotate(0deg)', transition:'transform .2s' }}/>
+                  </div>
+                </button>
+
+                {/* Products grid — shown when expanded */}
+                <AnimatePresence>
+                  {isOpen && (
+                    <motion.div initial={{height:0,opacity:0}} animate={{height:'auto',opacity:1}} exit={{height:0,opacity:0}} transition={{duration:.2}}
+                      style={{ overflow:'hidden' }}>
+                      <div style={{ padding:'0 16px 16px', borderTop:`1px solid ${T.line}` }}>
+                        <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', fontWeight:600, color:'#7A3AB0', textTransform:'uppercase', letterSpacing:'0.1em', padding:'12px 0 10px' }}>
+                          Products by {seller.sellerName}
+                        </p>
+                        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))', gap:12 }}>
+                          {seller.products.map(p => (
+                            <div key={p.id} style={{ background:T.offwhite, borderRadius:12, overflow:'hidden', border:`1.5px solid ${confirmId===p.id?T.rust:T.line}`, transition:'border-color .2s' }}>
+                              <div style={{ position:'relative', aspectRatio:'1', overflow:'hidden' }}>
+                                <img src={p.imageUrl} alt={p.name} style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
+                                {deletingId===p.id && (
+                                  <div style={{ position:'absolute', inset:0, background:'rgba(0,0,0,0.6)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                                    <Loader2 size={24} color="#fff" style={{animation:'spin 1s linear infinite'}}/>
+                                  </div>
+                                )}
+                                <div style={{ position:'absolute', top:6, left:6, background:'rgba(255,255,255,0.92)', borderRadius:6, padding:'2px 7px' }}>
+                                  <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.58rem', fontWeight:600, color:T.inkM }}>{p.category}</p>
+                                </div>
+                              </div>
+                              <div style={{ padding:'10px 12px' }}>
+                                <p style={{ fontFamily:'"Playfair Display",serif', fontStyle:'italic', fontSize:'0.82rem', color:T.ink, marginBottom:2, ...clamp(2) }}>{p.name}</p>
+                                <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.78rem', fontWeight:700, color:T.forest, marginBottom:10 }}>₹{p.price}</p>
+                                {confirmId===p.id ? (
+                                  <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                                    <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.68rem', color:T.rust, fontWeight:600, textAlign:'center' }}>Not genuine?</p>
+                                    <button onClick={e=>handleRemove(p.id,e)} disabled={!!deletingId}
+                                      style={{ width:'100%', padding:'7px', background:T.rust, color:'#fff', border:'none', borderRadius:7, fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', fontWeight:600, cursor:'pointer' }}>
+                                      ⚠ Confirm Remove
+                                    </button>
+                                    <button onClick={e=>{e.stopPropagation();setConfirmId(null);}}
+                                      style={{ width:'100%', padding:'6px', background:'transparent', border:`1px solid ${T.line}`, borderRadius:7, fontFamily:'"Inter",sans-serif', fontSize:'0.68rem', color:T.inkL, cursor:'pointer' }}>
+                                      Cancel
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button onClick={e=>handleRemove(p.id,e)} disabled={!!deletingId}
+                                    style={{ width:'100%', padding:'7px', background:'transparent', color:T.rust, border:`1px solid ${T.rust}`, borderRadius:7, fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', fontWeight:600, cursor:'pointer', transition:'all .2s' }}>
+                                    Remove Product
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
