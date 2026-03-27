@@ -58,8 +58,7 @@ type NavName  = 'home'|'sell'|'profile'|'login'|'admin';
 interface AppUser { role:'buyer'|'seller'|null; name:string; id:string; email?:string; }
 
 // ── DEVELOPER ID ───────────────────────────────────────────
-// Set this to your developer account email
-const DEV_EMAIL = 'shubhamvairagl0@gmail.com';
+const DEV_EMAIL = 'shubhamvairagI0@gmail.com';
 
 // ── HELPERS ────────────────────────────────────────────────
 const clamp = (n:number): React.CSSProperties => ({
@@ -655,8 +654,9 @@ export function App() {
   }, [showToast]);
 
   const cartCount = cart.reduce((s,i)=>s+i.qty,0);
-  const isDev = user.email === DEV_EMAIL || user.name?.toLowerCase().includes('shubham');
-
+const isDev = user.email === DEV_EMAIL || 
+              user.name?.toLowerCase().includes('shubham') ||
+              user.id === 'YOUR_ACTUAL_USER_ID';
   return (
     <div style={{ minHeight:'100vh', background:T.offwhite, color:T.ink, fontFamily:'"Inter",sans-serif', paddingBottom:'5rem' }}>
       <style>{`
