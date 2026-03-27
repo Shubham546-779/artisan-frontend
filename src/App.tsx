@@ -656,7 +656,7 @@ export function App() {
   const cartCount = cart.reduce((s,i)=>s+i.qty,0);
 const isDev = user.email === DEV_EMAIL || 
               user.name?.toLowerCase().includes('shubham') ||
-              user.id === 'YOUR_ACTUAL_USER_ID';
+              user.id === 'b57cab1b-9a1b-4b6e-a783-b2f2417a3065';
   return (
     <div style={{ minHeight:'100vh', background:T.offwhite, color:T.ink, fontFamily:'"Inter",sans-serif', paddingBottom:'5rem' }}>
       <style>{`
