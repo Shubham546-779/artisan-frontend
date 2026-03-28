@@ -20,7 +20,6 @@ async function request<T>(
   method: string,
   path: string,
   body?: unknown,
-  
   auth: boolean = true,
 ): Promise<T> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -147,11 +146,13 @@ export const api = {
 
     me: (): Promise<User> => get<User>('/auth/me', true),
 
+    // ✅ Fixed: saves new token returned after role update
     updateProfile: (data: Partial<User>): Promise<User> =>
-  put<User & { token?: string }>('/auth/me', data, true).then((res) => {
-    if (res.token) tokenStore.set(res.token);  // ✅ save new token
-    return res;
-  }),
+      put<User & { token?: string }>('/auth/me', data, true).then((res) => {
+        if (res.token) tokenStore.set(res.token);
+        return res;
+      }),
+  },  // ✅ auth closing brace was missing — this was the syntax bug
 
   products: {
     list: (params?: {
