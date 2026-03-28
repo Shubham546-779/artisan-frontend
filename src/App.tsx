@@ -659,14 +659,6 @@ export function App() {
     setView(v); setSelProduct(null);
   }, [user.role]);
 
-  const handleLogin = useCallback((u:{role:'buyer'|'seller';name:string;id:string;email?:string}) => {
-  if (u.email) localStorage.setItem('ab_user_email', u.email);
-  localStorage.setItem('ab_user_id', u.id);
-  localStorage.setItem('ab_user_name', u.name);
-  localStorage.setItem('ab_user_role', u.role);
-  setUser(u); setView('home'); setSelProduct(null); showToast(`Welcome, ${u.name}!`);
-}, [showToast]);
-
  const handleLogout = useCallback(() => {
   api.auth.logout();
   localStorage.removeItem('ab_user_email');
@@ -677,6 +669,13 @@ export function App() {
   setView('home'); setSelProduct(null); showToast('Signed out');
 }, [showToast]);
 
+  const handleLogin = useCallback((u:{role:'buyer'|'seller';name:string;id:string;email?:string}) => {
+  if (u.email) localStorage.setItem('ab_user_email', u.email);
+  localStorage.setItem('ab_user_id', u.id);
+  localStorage.setItem('ab_user_name', u.name);
+  localStorage.setItem('ab_user_role', u.role);
+  setUser(u); setView('home'); setSelProduct(null); showToast(`Welcome, ${u.name}!`);
+}, [showToast]);
 
   const handleShopConfirm = useCallback(async (shopName:string) => {
     setShowShopModal(false);
