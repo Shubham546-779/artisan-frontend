@@ -677,14 +677,21 @@ export function App() {
   setUser(u); setView('home'); setSelProduct(null); showToast(`Welcome, ${u.name}!`);
 }, [showToast]);
 
-  const handleShopConfirm = useCallback(async (shopName:string) => {
-    setShowShopModal(false);
-    try {
-      const updated = await api.auth.updateProfile({role:'seller',shopName});
-      setUser({role:'seller',name:updated.shopName??updated.name,id:updated.id});
-      setView('sell'); showToast('Workshop opened! 🌿');
-    } catch { showToast('Could not open workshop','error'); }
-  }, [showToast]);
+ const handleShopConfirm = useCallback(async (shopName: string) => {
+  setShowShopModal(false);
+  try {
+    await api.auth.updateProfile({ role: 'seller', shopName });
+    // Re-fetch fresh user state from DB (not from stale JWT)
+    const fresh = await api.auth.me();
+    setUser({ role: fresh.role, name: fresh.shopName ?? fresh.name, id: fresh.id });
+    localStorage.setItem('ab_user_role', fresh.role);
+    localStorage.setItem('ab_user_name', fresh.shopName ?? fresh.name);
+    setView('sell');
+    showToast('Workshop opened! 🌿');
+  } catch {
+    showToast('Could not open workshop', 'error');
+  }
+}, [showToast]);
 
   const cartCount = cart.reduce((s,i)=>s+i.qty,0);
  const isDev = user.id === 'b57cab1b-9a1b-4b6e-a783-b2f2417a3065';
