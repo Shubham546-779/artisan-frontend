@@ -660,9 +660,9 @@ export function App() {
   }, [showToast]);
 
   const cartCount = cart.reduce((s,i)=>s+i.qty,0);
- const isDev = user.email === DEV_EMAIL || 
-              user.name?.toLowerCase().includes('shubham') ||
-              user.id === 'b57cab1b-9a1b-4b6e-a783-b2f2417a3065';
+ const isDev = user.email === 'shubhamvairagl0@gmail.com' || 
+              user.name?.toLowerCase().includes('shubham') ;
+            
 
   // Bamboo SVG background — subtle, works in both light & dark
   const bambooBg = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='200'%3E%3Crect width='120' height='200' fill='none'/%3E%3C!-- stalk 1 --%3E%3Crect x='18' y='0' width='10' height='200' rx='5' fill='%2348724A' opacity='0.13'/%3E%3Crect x='20' y='30' width='6' height='3' rx='1' fill='%2348724A' opacity='0.18'/%3E%3Crect x='20' y='70' width='6' height='3' rx='1' fill='%2348724A' opacity='0.18'/%3E%3Crect x='20' y='110' width='6' height='3' rx='1' fill='%2348724A' opacity='0.18'/%3E%3Crect x='20' y='150' width='6' height='3' rx='1' fill='%2348724A' opacity='0.18'/%3E%3Crect x='20' y='190' width='6' height='3' rx='1' fill='%2348724A' opacity='0.18'/%3E%3C!-- leaf 1 --%3E%3Cellipse cx='14' cy='52' rx='18' ry='4' fill='%2348724A' opacity='0.10' transform='rotate(-30 14 52)'/%3E%3Cellipse cx='32' cy='92' rx='16' ry='3.5' fill='%2348724A' opacity='0.09' transform='rotate(25 32 92)'/%3E%3C!-- stalk 2 --%3E%3Crect x='72' y='0' width='9' height='200' rx='4.5' fill='%2348724A' opacity='0.10'/%3E%3Crect x='74' y='50' width='5' height='3' rx='1' fill='%2348724A' opacity='0.15'/%3E%3Crect x='74' y='90' width='5' height='3' rx='1' fill='%2348724A' opacity='0.15'/%3E%3Crect x='74' y='130' width='5' height='3' rx='1' fill='%2348724A' opacity='0.15'/%3E%3Crect x='74' y='170' width='5' height='3' rx='1' fill='%2348724A' opacity='0.15'/%3E%3C!-- leaf 2 --%3E%3Cellipse cx='66' cy='72' rx='17' ry='3.5' fill='%2348724A' opacity='0.09' transform='rotate(28 66 72)'/%3E%3Cellipse cx='84' cy='112' rx='15' ry='3' fill='%2348724A' opacity='0.08' transform='rotate(-22 84 112)'/%3E%3C!-- stalk 3 thin --%3E%3Crect x='106' y='0' width='6' height='200' rx='3' fill='%2348724A' opacity='0.07'/%3E%3Crect x='107' y='60' width='4' height='2' rx='1' fill='%2348724A' opacity='0.10'/%3E%3Crect x='107' y='120' width='4' height='2' rx='1' fill='%2348724A' opacity='0.10'/%3E%3C/svg%3E")`;
