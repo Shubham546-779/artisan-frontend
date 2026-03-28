@@ -147,8 +147,11 @@ export const api = {
 
     me: (): Promise<User> => get<User>('/auth/me', true),
 
-    updateProfile: (data: Partial<User>): Promise<User> => put<User>('/auth/me', data, true),
-  },
+    updateProfile: (data: Partial<User>): Promise<User> =>
+  put<User & { token?: string }>('/auth/me', data, true).then((res) => {
+    if (res.token) tokenStore.set(res.token);  // ✅ save new token
+    return res;
+  }),
 
   products: {
     list: (params?: {
