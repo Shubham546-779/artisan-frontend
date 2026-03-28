@@ -587,12 +587,33 @@ export function App() {
   useEffect(() => { try { localStorage.setItem('ab_dark', String(darkMode)); } catch {} }, [darkMode]);
   useEffect(() => { try { localStorage.setItem('ab_cart',JSON.stringify(cart)); } catch {} }, [cart]);
 
-  useEffect(() => {
+ useEffect(() => {
+  const savedId    = localStorage.getItem('ab_user_id');
+  const savedName  = localStorage.getItem('ab_user_name');
+  const savedRole  = localStorage.getItem('ab_user_role') as 'buyer'|'seller'|null;
+  const savedEmail = localStorage.getItem('ab_user_email');
+
+  if (savedId && savedName && savedRole) {
+    setUser({id:savedId, name:savedName, role:savedRole, email:savedEmail||''});
+  }
+
   if (tokenStore.get()) {
     api.auth.me().then(u=>{
-      const savedEmail = localStorage.getItem('ab_user_email') || '';
-      setUser({role:u.role,name:u.shopName??u.name,id:u.id,email:savedEmail});
-    }).catch(e=>{ if(e instanceof ApiError&&e.status===401) tokenStore.remove(); });
+      const email = localStorage.getItem('ab_user_email') || '';
+      setUser({role:u.role, name:u.shopName??u.name, id:u.id, email});
+      localStorage.setItem('ab_user_id', u.id);
+      localStorage.setItem('ab_user_name', u.shopName??u.name);
+      localStorage.setItem('ab_user_role', u.role);
+    }).catch(e=>{
+      if(e instanceof ApiError&&e.status===401) {
+        tokenStore.remove();
+        localStorage.removeItem('ab_user_id');
+        localStorage.removeItem('ab_user_name');
+        localStorage.removeItem('ab_user_role');
+        localStorage.removeItem('ab_user_email');
+        setUser({role:null,name:'',id:''});
+      }
+    });
   }
 }, []);
 
@@ -638,17 +659,24 @@ export function App() {
     setView(v); setSelProduct(null);
   }, [user.role]);
 
+  const handleLogin = useCallback((u:{role:'buyer'|'seller';name:string;id:string;email?:string}) => {
+  if (u.email) localStorage.setItem('ab_user_email', u.email);
+  localStorage.setItem('ab_user_id', u.id);
+  localStorage.setItem('ab_user_name', u.name);
+  localStorage.setItem('ab_user_role', u.role);
+  setUser(u); setView('home'); setSelProduct(null); showToast(`Welcome, ${u.name}!`);
+}, [showToast]);
+
  const handleLogout = useCallback(() => {
-  api.auth.logout(); 
+  api.auth.logout();
   localStorage.removeItem('ab_user_email');
+  localStorage.removeItem('ab_user_id');
+  localStorage.removeItem('ab_user_name');
+  localStorage.removeItem('ab_user_role');
   setUser({role:null,name:'',id:''});
   setView('home'); setSelProduct(null); showToast('Signed out');
 }, [showToast]);
 
-  const handleLogin = useCallback((u:{role:'buyer'|'seller';name:string;id:string;email?:string}) => {
-  if (u.email) localStorage.setItem('ab_user_email', u.email);
-  setUser(u); setView('home'); setSelProduct(null); showToast(`Welcome, ${u.name}!`);
-}, [showToast]);
 
   const handleShopConfirm = useCallback(async (shopName:string) => {
     setShowShopModal(false);
@@ -660,8 +688,7 @@ export function App() {
   }, [showToast]);
 
   const cartCount = cart.reduce((s,i)=>s+i.qty,0);
- const isDev = user.email === 'shubhamvairagl0@gmail.com' || 
-              user.name?.toLowerCase().includes('shubham') ;
+ const isDev = user.id === 'b57cab1b-9a1b-4b6e-a783-b2f2417a3065';
             
 
   // Bamboo SVG background — subtle, works in both light & dark
