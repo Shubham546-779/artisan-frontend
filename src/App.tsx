@@ -598,20 +598,23 @@ export function App() {
   }
 
   if (tokenStore.get()) {
-    api.auth.me().then(u=>{
+    api.auth.me().then(u => {
       const email = localStorage.getItem('ab_user_email') || '';
-      setUser({role:u.role, name:u.shopName??u.name, id:u.id, email});
+      const savedRole = localStorage.getItem('ab_user_role') as 'buyer'|'seller'|null;
+      // ✅ Trust localStorage role over JWT role (until backend fix is deployed)
+      const role = savedRole || u.role;
+      setUser({role, name: u.shopName ?? u.name, id: u.id, email});
       localStorage.setItem('ab_user_id', u.id);
-      localStorage.setItem('ab_user_name', u.shopName??u.name);
-      localStorage.setItem('ab_user_role', u.role);
-    }).catch(e=>{
-      if(e instanceof ApiError&&e.status===401) {
+      localStorage.setItem('ab_user_name', u.shopName ?? u.name);
+      localStorage.setItem('ab_user_role', role);
+    }).catch(e => {
+      if (e instanceof ApiError && e.status === 401) {
         tokenStore.remove();
         localStorage.removeItem('ab_user_id');
         localStorage.removeItem('ab_user_name');
         localStorage.removeItem('ab_user_role');
         localStorage.removeItem('ab_user_email');
-        setUser({role:null,name:'',id:''});
+        setUser({role:null, name:'', id:''});
       }
     });
   }
