@@ -9,6 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { api, tokenStore, ApiError } from './api/api';
 import type { Product, Category, Review, ReviewsResponse, ProductDetail } from './api/api';
 
+// ── DESIGN TOKENS ──────────────────────────────────────────
 const makeTokens = (dark: boolean) => ({
   white:    dark ? '#1A1A1A' : '#FFFFFF',
   offwhite: dark ? '#141414' : '#FAFAF8',
@@ -56,6 +57,11 @@ type ViewName = 'home'|'sell'|'profile'|'product'|'login'|'admin';
 type NavName  = 'home'|'sell'|'profile'|'login'|'admin';
 interface AppUser { role:'buyer'|'seller'|null; name:string; id:string; email?:string; }
 
+// ── DEVELOPER ID ───────────────────────────────────────────
+// Set this to your developer account email
+const DEV_EMAIL = 'shubhamvairagl0@gmail.com';
+
+// ── HELPERS ────────────────────────────────────────────────
 const clamp = (n:number): React.CSSProperties => ({
   display:'-webkit-box' as React.CSSProperties['display'],
   WebkitLineClamp:n,
@@ -63,6 +69,7 @@ const clamp = (n:number): React.CSSProperties => ({
   overflow:'hidden',
 });
 
+// ── SPINNER ────────────────────────────────────────────────
 function Spinner({ label='Loading…', T }:{ label?:string; T:Tokens }) {
   return (
     <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'80px 20px', gap:16 }}>
@@ -72,6 +79,7 @@ function Spinner({ label='Loading…', T }:{ label?:string; T:Tokens }) {
   );
 }
 
+// ── TOAST ──────────────────────────────────────────────────
 function Toast({ msg, type, onClose }:{ msg:string; type:'success'|'error'; onClose:()=>void }) {
   useEffect(() => { const t=setTimeout(onClose,3000); return ()=>clearTimeout(t); },[onClose]);
   return (
@@ -85,6 +93,7 @@ function Toast({ msg, type, onClose }:{ msg:string; type:'success'|'error'; onCl
   );
 }
 
+// ── CART DRAWER ────────────────────────────────────────────
 function CartDrawer({ cart, onClose, onUpdateQty, onRemove, onClearCart, showToast, T, onBrowseWares }:
   { cart:CartItem[]; onClose:()=>void; onUpdateQty:(id:string,qty:number)=>void;
     onRemove:(id:string)=>void; onClearCart:()=>void; showToast:(m:string,t?:'success'|'error')=>void; T:Tokens; onBrowseWares:()=>void }) {
@@ -117,6 +126,7 @@ function CartDrawer({ cart, onClose, onUpdateQty, onRemove, onClearCart, showToa
               <ChevronLeft size={18}/>
             </button>
           </div>
+
           <div style={{ flex:1, overflowY:'auto', padding:'16px' }}>
             {cart.length===0 ? (
               <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'100%', gap:16, padding:'60px 20px' }}>
@@ -152,6 +162,7 @@ function CartDrawer({ cart, onClose, onUpdateQty, onRemove, onClearCart, showToa
               </div>
             )}
           </div>
+
           {cart.length>0 && (
             <div style={{ padding:'20px 24px', borderTop:`1px solid ${T.line}`, background:T.white }}>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
@@ -169,6 +180,7 @@ function CartDrawer({ cart, onClose, onUpdateQty, onRemove, onClearCart, showToa
           )}
         </motion.div>
       </motion.div>
+
       <AnimatePresence>
         {showOrderForm && (
           <OrderFormModal cart={cart} onClose={()=>setShowOrderForm(false)} T={T}
@@ -189,6 +201,7 @@ function CartDrawer({ cart, onClose, onUpdateQty, onRemove, onClearCart, showToa
   );
 }
 
+// ── ORDER FORM MODAL ───────────────────────────────────────
 interface OrderForm { name:string; email:string; mobile:string; address:string; city:string; pincode:string; }
 
 function OrderFormModal({ cart, onClose, onSuccess, T }:{ cart:CartItem[]; onClose:()=>void; onSuccess:()=>void; T:Tokens }) {
@@ -302,6 +315,7 @@ function OrderFormModal({ cart, onClose, onSuccess, T }:{ cart:CartItem[]; onClo
   );
 }
 
+// ── ORDER SUCCESS ──────────────────────────────────────────
 function OrderSuccessModal({ orderId, email, onClose, T }:{ orderId:string; email:string; onClose:()=>void; T:Tokens }) {
   return (
     <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
@@ -327,6 +341,7 @@ function OrderSuccessModal({ orderId, email, onClose, T }:{ orderId:string; emai
   );
 }
 
+// ── SHOP NAME MODAL ────────────────────────────────────────
 function ShopNameModal({ onConfirm, onClose, T }:{ onConfirm:(s:string)=>void; onClose:()=>void; T:Tokens }) {
   const [shopName, setShopName] = useState('');
   return (
@@ -357,22 +372,24 @@ function ShopNameModal({ onConfirm, onClose, T }:{ onConfirm:(s:string)=>void; o
   );
 }
 
+// ── IMAGE UPLOADER ─────────────────────────────────────────
 const isMobile = () => /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
 function ImageUploader({ value, onChange, T }:{ value:string; onChange:(url:string)=>void; T:Tokens }) {
-  const [uploading, setUploading] = useState(false);
-  const [preview, setPreview]     = useState(value);
-  const [error, setError]         = useState('');
-  const [urlMode, setUrlMode]     = useState(false);
-  const [urlInput, setUrlInput]   = useState('');
-  const fileRef   = useRef<HTMLInputElement>(null);
-  const cameraRef = useRef<HTMLInputElement>(null);
-  const folderRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading]   = useState(false);
+  const [preview, setPreview]       = useState(value);
+  const [error, setError]           = useState('');
+  const [urlMode, setUrlMode]       = useState(false);
+  const [urlInput, setUrlInput]     = useState('');
+  const fileRef    = useRef<HTMLInputElement>(null);  // gallery / any file
+  const cameraRef  = useRef<HTMLInputElement>(null);  // camera capture (mobile)
+  const folderRef  = useRef<HTMLInputElement>(null);  // folder browse (desktop)
 
   const reset = () => { setPreview(''); onChange(''); setUrlInput(''); setUrlMode(false); setError(''); };
 
   const uploadFile = async (file:File) => {
     setUploading(true); setError('');
+    // show local preview immediately
     const reader = new FileReader();
     reader.onload = e => { const d=e.target?.result as string; setPreview(d); onChange(d); };
     reader.readAsDataURL(file);
@@ -394,6 +411,8 @@ function ImageUploader({ value, onChange, T }:{ value:string; onChange:(url:stri
   };
 
   const mobile = isMobile();
+
+  // ── shared button style helper ──────────────────────────
   const pickBtn = (accent:string, bg:string): React.CSSProperties => ({
     display:'flex', alignItems:'center', justifyContent:'center', gap:6,
     padding:'9px 14px', background:bg, color:accent,
@@ -404,9 +423,13 @@ function ImageUploader({ value, onChange, T }:{ value:string; onChange:(url:stri
 
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+      {/* hidden file inputs */}
       <input ref={fileRef}   type="file" accept="image/*"             onChange={e=>{ const f=e.target.files?.[0]; if(f) uploadFile(f); }} style={{display:'none'}}/>
       <input ref={cameraRef} type="file" accept="image/*" capture="environment" onChange={e=>{ const f=e.target.files?.[0]; if(f) uploadFile(f); }} style={{display:'none'}}/>
+      {/* folder ref — no capture, no accept restriction so OS shows folder picker on desktop */}
       <input ref={folderRef} type="file" accept="image/*"             onChange={e=>{ const f=e.target.files?.[0]; if(f) uploadFile(f); }} style={{display:'none'}}/>
+
+      {/* ── PREVIEW ── */}
       {preview ? (
         <div style={{ position:'relative', borderRadius:12, overflow:'hidden', border:`1px solid ${T.line}` }}>
           <img src={preview} alt="Preview" style={{ width:'100%', height:200, objectFit:'cover', display:'block' }}/>
@@ -416,9 +439,11 @@ function ImageUploader({ value, onChange, T }:{ value:string; onChange:(url:stri
               <span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.78rem', color:'#fff', fontWeight:600 }}>Uploading…</span>
             </div>
           )}
+          {/* top-right remove */}
           <button onClick={reset} style={{ position:'absolute', top:8, right:8, background:T.rust, border:'none', borderRadius:'50%', width:30, height:30, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', color:'#fff' }}>
             <X size={13}/>
           </button>
+          {/* bottom action bar */}
           <div style={{ position:'absolute', bottom:0, left:0, right:0, padding:'8px 10px', background:'rgba(0,0,0,0.55)', backdropFilter:'blur(4px)', display:'flex', gap:8 }}>
             {mobile ? (
               <>
@@ -435,8 +460,10 @@ function ImageUploader({ value, onChange, T }:{ value:string; onChange:(url:stri
           </div>
         </div>
       ) : (
+        /* ── EMPTY STATE ── */
         <div onDragOver={e=>e.preventDefault()} onDrop={e=>{ e.preventDefault(); const f=e.dataTransfer.files?.[0]; if(f) uploadFile(f); }}
           style={{ border:`2px dashed ${T.line}`, borderRadius:12, background:T.offwhite, overflow:'hidden' }}>
+
           {uploading ? (
             <div style={{ padding:'36px 20px', display:'flex', flexDirection:'column', alignItems:'center', gap:12 }}>
               <Loader2 size={32} color={T.forest} style={{animation:'spin 1s linear infinite'}}/>
@@ -444,6 +471,7 @@ function ImageUploader({ value, onChange, T }:{ value:string; onChange:(url:stri
             </div>
           ) : (
             <>
+              {/* drag hint */}
               <div style={{ padding:'24px 20px 16px', textAlign:'center' }}>
                 <div style={{ width:52, height:52, background:T.forestXL, borderRadius:12, display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 10px' }}>
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={T.forest} strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
@@ -453,41 +481,74 @@ function ImageUploader({ value, onChange, T }:{ value:string; onChange:(url:stri
                 </p>
                 <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.7rem', color:T.inkL }}>JPG · PNG · WEBP · Max 5 MB</p>
               </div>
+
+              {/* pick buttons */}
               <div style={{ padding:'0 14px 14px', display:'flex', gap:8, flexWrap:'wrap' }}>
                 {mobile ? (
                   <>
-                    <button onClick={()=>fileRef.current?.click()} style={pickBtn(T.forest, T.forestXL)}>🖼️ Gallery</button>
-                    <button onClick={()=>cameraRef.current?.click()} style={pickBtn(T.earth, T.earthXL)}>📷 Camera</button>
+                    <button onClick={()=>fileRef.current?.click()}
+                      style={pickBtn(T.forest, T.forestXL)}>
+                      🖼️ Gallery
+                    </button>
+                    <button onClick={()=>cameraRef.current?.click()}
+                      style={pickBtn(T.earth, T.earthXL)}>
+                      📷 Camera
+                    </button>
                   </>
                 ) : (
                   <>
-                    <button onClick={()=>folderRef.current?.click()} style={pickBtn(T.forest, T.forestXL)}>📁 From Folder</button>
-                    <button onClick={()=>fileRef.current?.click()} style={pickBtn(T.earth, T.earthXL)}>🖼️ Browse Files</button>
+                    <button onClick={()=>folderRef.current?.click()}
+                      style={pickBtn(T.forest, T.forestXL)}>
+                      📁 From Folder
+                    </button>
+                    <button onClick={()=>fileRef.current?.click()}
+                      style={pickBtn(T.earth, T.earthXL)}>
+                      🖼️ Browse Files
+                    </button>
                   </>
                 )}
-                <button onClick={()=>setUrlMode(v=>!v)} style={pickBtn(T.inkM, T.paper)}>🔗 Paste URL</button>
+                <button onClick={()=>setUrlMode(v=>!v)}
+                  style={pickBtn(T.inkM, T.paper)}>
+                  🔗 Paste URL
+                </button>
               </div>
             </>
           )}
         </div>
       )}
+
+      {/* ── URL INPUT (shown when urlMode=true) ── */}
       <AnimatePresence>
         {urlMode && (
           <motion.div initial={{opacity:0,y:-6}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-6}} transition={{duration:.15}}
             style={{ background:T.paper, borderRadius:10, padding:'12px 14px', border:`1.5px solid ${T.forestL}` }}>
             <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', fontWeight:600, color:T.forest, textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:8 }}>Paste Image URL</p>
             <div style={{ display:'flex', gap:8 }}>
-              <input type="url" autoFocus placeholder="https://example.com/photo.jpg" value={urlInput}
+              <input
+                type="url"
+                autoFocus
+                placeholder="https://example.com/photo.jpg"
+                value={urlInput}
                 onChange={e=>{ setUrlInput(e.target.value); setError(''); }}
                 onKeyDown={e=>{ if(e.key==='Enter') applyUrl(); if(e.key==='Escape') setUrlMode(false); }}
-                style={{ flex:1, padding:'9px 12px', background:T.white, border:`1.5px solid ${T.line}`, borderRadius:8, fontSize:'0.85rem', outline:'none', color:T.ink, fontFamily:'"Inter",sans-serif' }}/>
-              <button onClick={applyUrl} style={{ padding:'9px 16px', background:T.forest, color:'#fff', border:'none', borderRadius:8, fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', fontWeight:600, cursor:'pointer', whiteSpace:'nowrap' }}>Use</button>
-              <button onClick={()=>{ setUrlMode(false); setError(''); }} style={{ width:36, height:36, background:T.paper, border:`1px solid ${T.line}`, borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', color:T.inkL, flexShrink:0 }}><X size={14}/></button>
+                style={{ flex:1, padding:'9px 12px', background:T.white, border:`1.5px solid ${T.line}`, borderRadius:8, fontSize:'0.85rem', outline:'none', color:T.ink, fontFamily:'"Inter",sans-serif' }}
+              />
+              <button onClick={applyUrl}
+                style={{ padding:'9px 16px', background:T.forest, color:'#fff', border:'none', borderRadius:8, fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', fontWeight:600, cursor:'pointer', whiteSpace:'nowrap' }}>
+                Use
+              </button>
+              <button onClick={()=>{ setUrlMode(false); setError(''); }}
+                style={{ width:36, height:36, background:T.paper, border:`1px solid ${T.line}`, borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', color:T.inkL, flexShrink:0 }}>
+                <X size={14}/>
+              </button>
             </div>
-            <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.7rem', color:T.inkL, marginTop:6 }}>Press Enter to confirm · Esc to cancel</p>
+            <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.7rem', color:T.inkL, marginTop:6 }}>
+              Press Enter to confirm · Esc to cancel
+            </p>
           </motion.div>
         )}
       </AnimatePresence>
+
       {error && (
         <div style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 12px', background:'#FFF0EE', border:'1px solid #F5C5BE', borderRadius:8 }}>
           <AlertCircle size={13} color="#9B3D2A"/>
@@ -498,8 +559,9 @@ function ImageUploader({ value, onChange, T }:{ value:string; onChange:(url:stri
   );
 }
 
+// ── APP ────────────────────────────────────────────────────
 export function App() {
-  const [darkMode, setDarkMode] = useState(() => {
+  const [darkMode, setDarkMode]       = useState(() => {
     try { return localStorage.getItem('ab_dark')==='true'; } catch { return false; }
   });
   const T = makeTokens(darkMode);
@@ -526,35 +588,9 @@ export function App() {
   useEffect(() => { try { localStorage.setItem('ab_cart',JSON.stringify(cart)); } catch {} }, [cart]);
 
   useEffect(() => {
-    const savedId    = localStorage.getItem('ab_user_id');
-    const savedName  = localStorage.getItem('ab_user_name');
-    const savedRole  = localStorage.getItem('ab_user_role') as 'buyer'|'seller'|null;
-    const savedEmail = localStorage.getItem('ab_user_email');
-
-    if (savedId && savedName && savedRole) {
-      setUser({id:savedId, name:savedName, role:savedRole, email:savedEmail||''});
-    }
-
     if (tokenStore.get()) {
-      api.auth.me().then(u => {
-        const email      = localStorage.getItem('ab_user_email') || '';
-        const savedRole  = localStorage.getItem('ab_user_role') as 'buyer'|'seller'|null;
-        // ✅ Trust localStorage role over JWT role until backend redeploys new token
-        const role = savedRole ?? u.role;
-        setUser({role, name: u.shopName ?? u.name, id: u.id, email});
-        localStorage.setItem('ab_user_id', u.id);
-        localStorage.setItem('ab_user_name', u.shopName ?? u.name);
-        localStorage.setItem('ab_user_role', role);
-      }).catch(e => {
-        if (e instanceof ApiError && e.status === 401) {
-          tokenStore.remove();
-          localStorage.removeItem('ab_user_id');
-          localStorage.removeItem('ab_user_name');
-          localStorage.removeItem('ab_user_role');
-          localStorage.removeItem('ab_user_email');
-          setUser({role:null, name:'', id:''});
-        }
-      });
+      api.auth.me().then(u=>setUser({role:u.role,name:u.shopName??u.name,id:u.id}))
+        .catch(e=>{ if(e instanceof ApiError&&e.status===401) tokenStore.remove(); });
     }
   }, []);
 
@@ -582,7 +618,7 @@ export function App() {
     showToast(`Added to basket!`);
   }, [showToast]);
 
-  const updateCartQty  = useCallback((id:string,qty:number)=>setCart(p=>p.map(i=>i.product.id===id?{...i,qty}:i)),[]);
+  const updateCartQty = useCallback((id:string,qty:number)=>setCart(p=>p.map(i=>i.product.id===id?{...i,qty}:i)),[]);
   const removeFromCart = useCallback((id:string)=>setCart(p=>p.filter(i=>i.product.id!==id)),[]);
 
   const goToProduct = useCallback((p:Product) => {
@@ -591,63 +627,42 @@ export function App() {
     window.scrollTo({top:0,behavior:'smooth'});
   }, [view, prevView]);
 
-  // ✅ FIXED nav — complete function with all routes handled
-  const nav = useCallback((v: NavName) => {
-    if (v === 'sell') {
+  const nav = useCallback((v:NavName) => {
+    if (v==='sell') {
       if (!user.role) { setView('login'); setSelProduct(null); return; }
-      if (user.role !== 'seller') { setShowShopModal(true); return; }
+      if (user.role!=='seller') { setShowShopModal(true); return; }
     }
-    if (v === 'profile' && !user.role) { setView('login'); setSelProduct(null); return; }
-    setView(v);
-    setSelProduct(null);
+    if (v==='profile'&&!user.role) { setView('login'); setSelProduct(null); return; }
+    setView(v); setSelProduct(null);
   }, [user.role]);
 
   const handleLogout = useCallback(() => {
-    api.auth.logout();
-    localStorage.removeItem('ab_user_email');
-    localStorage.removeItem('ab_user_id');
-    localStorage.removeItem('ab_user_name');
-    localStorage.removeItem('ab_user_role');
-    setUser({role:null,name:'',id:''});
+    api.auth.logout(); setUser({role:null,name:'',id:''});
     setView('home'); setSelProduct(null); showToast('Signed out');
   }, [showToast]);
 
   const handleLogin = useCallback((u:{role:'buyer'|'seller';name:string;id:string;email?:string}) => {
-    if (u.email) localStorage.setItem('ab_user_email', u.email);
-    localStorage.setItem('ab_user_id', u.id);
-    localStorage.setItem('ab_user_name', u.name);
-    localStorage.setItem('ab_user_role', u.role);
     setUser(u); setView('home'); setSelProduct(null); showToast(`Welcome, ${u.name}!`);
   }, [showToast]);
 
-  // ✅ FIXED handleShopConfirm — skips API call if already a seller
-  const handleShopConfirm = useCallback(async (shopName: string) => {
+  const handleShopConfirm = useCallback(async (shopName:string) => {
     setShowShopModal(false);
-    if (user.role === 'seller') {
-      setView('sell');
-      return;
-    }
     try {
-      const updated = await api.auth.updateProfile({ role: 'seller' as any, shopName });
-      const role = (updated as any).role ?? 'seller';
-      const name = (updated as any).shopName ?? updated.name;
-      setUser({ role, name, id: updated.id });
-      localStorage.setItem('ab_user_role', role);
-      localStorage.setItem('ab_user_name', name);
-      setView('sell');
-      showToast('Workshop opened! 🌿');
-    } catch {
-      showToast('Could not open workshop', 'error');
-    }
-  }, [user.role, showToast]);
+      const updated = await api.auth.updateProfile({role:'seller',shopName});
+      setUser({role:'seller',name:updated.shopName??updated.name,id:updated.id});
+      setView('sell'); showToast('Workshop opened! 🌿');
+    } catch { showToast('Could not open workshop','error'); }
+  }, [showToast]);
 
   const cartCount = cart.reduce((s,i)=>s+i.qty,0);
-  const isDev = user.id === 'b57cab1b-9a1b-4b6e-a783-b2f2417a3065';
+  const isDev = user.email === DEV_EMAIL || user.name?.toLowerCase().includes('shubham');
 
-  const bambooBg = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='200'%3E%3Crect width='120' height='200' fill='none'/%3E%3Crect x='18' y='0' width='10' height='200' rx='5' fill='%2348724A' opacity='0.13'/%3E%3Crect x='20' y='30' width='6' height='3' rx='1' fill='%2348724A' opacity='0.18'/%3E%3Crect x='20' y='70' width='6' height='3' rx='1' fill='%2348724A' opacity='0.18'/%3E%3Crect x='20' y='110' width='6' height='3' rx='1' fill='%2348724A' opacity='0.18'/%3E%3Crect x='20' y='150' width='6' height='3' rx='1' fill='%2348724A' opacity='0.18'/%3E%3Crect x='20' y='190' width='6' height='3' rx='1' fill='%2348724A' opacity='0.18'/%3E%3Cellipse cx='14' cy='52' rx='18' ry='4' fill='%2348724A' opacity='0.10' transform='rotate(-30 14 52)'/%3E%3Cellipse cx='32' cy='92' rx='16' ry='3.5' fill='%2348724A' opacity='0.09' transform='rotate(25 32 92)'/%3E%3Crect x='72' y='0' width='9' height='200' rx='4.5' fill='%2348724A' opacity='0.10'/%3E%3Crect x='74' y='50' width='5' height='3' rx='1' fill='%2348724A' opacity='0.15'/%3E%3Crect x='74' y='90' width='5' height='3' rx='1' fill='%2348724A' opacity='0.15'/%3E%3Crect x='74' y='130' width='5' height='3' rx='1' fill='%2348724A' opacity='0.15'/%3E%3Crect x='74' y='170' width='5' height='3' rx='1' fill='%2348724A' opacity='0.15'/%3E%3Cellipse cx='66' cy='72' rx='17' ry='3.5' fill='%2348724A' opacity='0.09' transform='rotate(28 66 72)'/%3E%3Cellipse cx='84' cy='112' rx='15' ry='3' fill='%2348724A' opacity='0.08' transform='rotate(-22 84 112)'/%3E%3Crect x='106' y='0' width='6' height='200' rx='3' fill='%2348724A' opacity='0.07'/%3E%3Crect x='107' y='60' width='4' height='2' rx='1' fill='%2348724A' opacity='0.10'/%3E%3Crect x='107' y='120' width='4' height='2' rx='1' fill='%2348724A' opacity='0.10'/%3E%3C/svg%3E")`;
+  // Bamboo SVG background — subtle, works in both light & dark
+  const bambooBg = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='200'%3E%3Crect width='120' height='200' fill='none'/%3E%3C!-- stalk 1 --%3E%3Crect x='18' y='0' width='10' height='200' rx='5' fill='%2348724A' opacity='0.13'/%3E%3Crect x='20' y='30' width='6' height='3' rx='1' fill='%2348724A' opacity='0.18'/%3E%3Crect x='20' y='70' width='6' height='3' rx='1' fill='%2348724A' opacity='0.18'/%3E%3Crect x='20' y='110' width='6' height='3' rx='1' fill='%2348724A' opacity='0.18'/%3E%3Crect x='20' y='150' width='6' height='3' rx='1' fill='%2348724A' opacity='0.18'/%3E%3Crect x='20' y='190' width='6' height='3' rx='1' fill='%2348724A' opacity='0.18'/%3E%3C!-- leaf 1 --%3E%3Cellipse cx='14' cy='52' rx='18' ry='4' fill='%2348724A' opacity='0.10' transform='rotate(-30 14 52)'/%3E%3Cellipse cx='32' cy='92' rx='16' ry='3.5' fill='%2348724A' opacity='0.09' transform='rotate(25 32 92)'/%3E%3C!-- stalk 2 --%3E%3Crect x='72' y='0' width='9' height='200' rx='4.5' fill='%2348724A' opacity='0.10'/%3E%3Crect x='74' y='50' width='5' height='3' rx='1' fill='%2348724A' opacity='0.15'/%3E%3Crect x='74' y='90' width='5' height='3' rx='1' fill='%2348724A' opacity='0.15'/%3E%3Crect x='74' y='130' width='5' height='3' rx='1' fill='%2348724A' opacity='0.15'/%3E%3Crect x='74' y='170' width='5' height='3' rx='1' fill='%2348724A' opacity='0.15'/%3E%3C!-- leaf 2 --%3E%3Cellipse cx='66' cy='72' rx='17' ry='3.5' fill='%2348724A' opacity='0.09' transform='rotate(28 66 72)'/%3E%3Cellipse cx='84' cy='112' rx='15' ry='3' fill='%2348724A' opacity='0.08' transform='rotate(-22 84 112)'/%3E%3C!-- stalk 3 thin --%3E%3Crect x='106' y='0' width='6' height='200' rx='3' fill='%2348724A' opacity='0.07'/%3E%3Crect x='107' y='60' width='4' height='2' rx='1' fill='%2348724A' opacity='0.10'/%3E%3Crect x='107' y='120' width='4' height='2' rx='1' fill='%2348724A' opacity='0.10'/%3E%3C/svg%3E")`;
 
   return (
     <div style={{ minHeight:'100vh', background:T.offwhite, color:T.ink, fontFamily:'"Inter",sans-serif', paddingBottom:'5rem', position:'relative' }}>
+      {/* Bamboo background layer */}
       <div style={{ position:'fixed', inset:0, zIndex:0, backgroundImage:bambooBg, backgroundSize:'120px 200px', backgroundRepeat:'repeat', opacity: darkMode ? 0.6 : 1, pointerEvents:'none' }}/>
       <div style={{ position:'relative', zIndex:1 }}>
       <style>{`
@@ -671,6 +686,7 @@ export function App() {
 
       <div style={{ background:T.forest, height:'env(safe-area-inset-top)', position:'fixed', top:0, left:0, right:0, zIndex:101 }}/>
 
+      {/* HEADER */}
       <header style={{ position:'sticky', top:'env(safe-area-inset-top)', zIndex:100, background: darkMode ? 'rgba(26,26,26,0.97)' : 'rgba(255,255,255,0.95)', backdropFilter:'blur(12px)', borderBottom:`1px solid ${T.line}`, boxShadow:`0 1px 12px ${T.shadow}` }}>
         <div style={{ maxWidth:1200, margin:'0 auto', padding:'0 16px', height:60, display:'flex', alignItems:'center', gap:12 }}>
           {view==='product' && (
@@ -696,10 +712,12 @@ export function App() {
             </div>
           )}
           <div style={{ marginLeft:'auto', display:'flex', alignItems:'center', gap:8 }}>
+            {/* Dark mode toggle */}
             <button onClick={()=>setDarkMode(d=>!d)}
               style={{ width:36, height:36, borderRadius:8, border:`1px solid ${T.line}`, background:T.paper, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', color:T.inkM, flexShrink:0 }}>
               {darkMode ? <Sun size={16}/> : <Moon size={16}/>}
             </button>
+            {/* User name chip — taps to profile, no sign out here */}
             {user.role ? (
               <div onClick={()=>nav('profile')} style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 10px', background:T.paper, borderRadius:10, border:`1px solid ${T.line}`, cursor:'pointer' }}>
                 <div style={{ width:28, height:28, borderRadius:'50%', background:T.forest, display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontSize:'0.78rem', fontWeight:700, flexShrink:0 }}>{user.name[0]?.toUpperCase()}</div>
@@ -724,6 +742,7 @@ export function App() {
         )}
       </header>
 
+      {/* MAIN */}
       <main>
         <AnimatePresence mode="wait">
           {view==='home' && (
@@ -769,6 +788,7 @@ export function App() {
         </AnimatePresence>
       </main>
 
+      {/* BOTTOM NAV */}
       <nav style={{ position:'fixed', bottom:0, left:0, right:0, background: darkMode ? 'rgba(26,26,26,0.97)' : 'rgba(255,255,255,0.97)', backdropFilter:'blur(12px)', borderTop:`1px solid ${T.line}`, zIndex:100, paddingBottom:'env(safe-area-inset-bottom)' }}>
         <div style={{ display:'flex', justifyContent:'space-around', maxWidth:480, margin:'0 auto', padding:'6px 0' }}>
           {([
@@ -792,16 +812,18 @@ export function App() {
           })}
         </div>
       </nav>
-      </div>
+      </div>{/* end relative z-1 wrapper */}
     </div>
   );
 }
 
+// ── HOME VIEW ──────────────────────────────────────────────
 function HomeView({ products, loading, selectedCat, setSelectedCat, onProduct, onAddToCart, T }:
   { products:Product[]; loading:boolean; selectedCat:Category|'All'; setSelectedCat:(c:Category|'All')=>void;
     onProduct:(p:Product)=>void; onAddToCart:(p:Product,qty?:number)=>void; T:Tokens }) {
   return (
     <div>
+      {/* Hero Banner */}
       <div style={{ background:`linear-gradient(135deg, ${T.forest} 0%, #1a3320 100%)`, padding:'40px 20px 36px', position:'relative', overflow:'hidden' }}>
         <div style={{ position:'absolute', top:-60, right:-60, width:200, height:200, borderRadius:'50%', background:'rgba(255,255,255,0.04)', pointerEvents:'none' }}/>
         <div style={{ position:'absolute', bottom:-40, left:-40, width:160, height:160, borderRadius:'50%', background:'rgba(255,255,255,0.03)', pointerEvents:'none' }}/>
@@ -810,10 +832,13 @@ function HomeView({ products, loading, selectedCat, setSelectedCat, onProduct, o
             <span style={{ width:6, height:6, borderRadius:'50%', background:'#C9A84C', display:'block' }}/>
             <span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.75rem', color:'rgba(255,255,255,0.8)', letterSpacing:'0.1em', textTransform:'uppercase', fontWeight:500 }}>Handcrafted with love</span>
           </div>
-          <h1 style={{ fontFamily:'"Playfair Display",serif', fontSize:'clamp(2rem,6vw,3.5rem)', fontWeight:900, color:'#fff', lineHeight:1.1, letterSpacing:'-0.02em', marginBottom:16 }}>Artisan Bazaar</h1>
+          <h1 style={{ fontFamily:'"Playfair Display",serif', fontSize:'clamp(2rem,6vw,3.5rem)', fontWeight:900, color:'#fff', lineHeight:1.1, letterSpacing:'-0.02em', marginBottom:16 }}>
+            Artisan Bazaar
+          </h1>
           <p style={{ fontFamily:'"Crimson Pro",serif', fontSize:'clamp(1rem,2.5vw,1.2rem)', color:'rgba(255,255,255,0.7)', lineHeight:1.7, maxWidth:480, margin:'0 auto 28px', fontStyle:'italic' }}>
             A curated marketplace of authentic handcrafted goods, made with care by skilled artisans across India.
           </p>
+          {/* Stats row — only product count and sellers */}
           <div style={{ display:'flex', justifyContent:'center', gap:8, flexWrap:'wrap', marginBottom:24 }}>
             {[[`${products.length > 0 ? products.length : '70'}+`,'Products'],['500+','Artisans']].map(([v,l]) => (
               <div key={l} style={{ background:'rgba(255,255,255,0.1)', borderRadius:12, padding:'12px 20px', backdropFilter:'blur(4px)', border:'1px solid rgba(255,255,255,0.12)' }}>
@@ -822,8 +847,11 @@ function HomeView({ products, loading, selectedCat, setSelectedCat, onProduct, o
               </div>
             ))}
           </div>
+
         </div>
       </div>
+
+      {/* Category Pills */}
       <div style={{ background:T.white, borderBottom:`1px solid ${T.line}`, padding:'12px 16px', overflowX:'auto', position:'sticky', top:60, zIndex:50 }} className="scrollbar-hide">
         <div style={{ display:'flex', gap:8, minWidth:'max-content' }}>
           {(['All',...CATEGORIES] as (Category|'All')[]).map(cat => {
@@ -837,6 +865,8 @@ function HomeView({ products, loading, selectedCat, setSelectedCat, onProduct, o
           })}
         </div>
       </div>
+
+      {/* Products */}
       <div style={{ maxWidth:1200, margin:'0 auto', padding:'24px 16px 40px' }}>
         {selectedCat!=='All' && (
           <motion.div initial={{opacity:0,y:-8}} animate={{opacity:1,y:0}} style={{ marginBottom:24 }}>
@@ -856,7 +886,9 @@ function HomeView({ products, loading, selectedCat, setSelectedCat, onProduct, o
             <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.85rem', color:T.inkL, marginTop:8 }}>Try a different category or search term</p>
           </div>
         ) : (
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(2, 1fr)', gap:12 }} className="products-grid">
+          /* ── GRID: 2 cols on mobile, auto-fill on larger ── */
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(2, 1fr)', gap:12 }}
+            className="products-grid">
             <style>{`@media(min-width:600px){.products-grid{grid-template-columns:repeat(auto-fill,minmax(200px,1fr))!important;gap:20px!important;}}`}</style>
             {products.map((p,i) => (
               <motion.div key={p.id} initial={{opacity:0,y:20}} animate={{opacity:1,y:0}} transition={{delay:Math.min(i*.04,.6)}}
@@ -890,6 +922,7 @@ function HomeView({ products, loading, selectedCat, setSelectedCat, onProduct, o
   );
 }
 
+// ── PRODUCT DETAIL ─────────────────────────────────────────
 function ProductDetailView({ product:init, onProduct, isOwn, onAddToCart, showToast, T }:
   { product:Product; onProduct:(p:Product)=>void; isOwn:boolean; onAddToCart:(p:Product,qty:number)=>void; showToast:(m:string,t?:'success'|'error')=>void; T:Tokens }) {
   const [product, setProduct] = useState<Product>(init);
@@ -916,12 +949,14 @@ function ProductDetailView({ product:init, onProduct, isOwn, onAddToCart, showTo
         <ChevronRight size={12}/>
         <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{product.name}</span>
       </div>
+
       <div className="product-split" style={{ display:'grid', gridTemplateColumns:'50% 50%', minHeight:'70vh', maxWidth:1100, margin:'0 auto' }}>
         <div className="product-split-img" style={{ padding:'24px', position:'sticky', top:70, alignSelf:'start', borderRight:`1px solid ${T.line}` }}>
           <div style={{ borderRadius:16, overflow:'hidden', boxShadow:`0 8px 32px ${T.shadowM}` }}>
             <img src={product.imageUrl} alt={product.name} style={{ width:'100%', aspectRatio:'1', objectFit:'cover', display:'block' }}/>
           </div>
         </div>
+
         <div style={{ padding:'28px 24px', display:'flex', flexDirection:'column', gap:20 }}>
           <div style={{ display:'inline-flex', alignItems:'center', gap:6, background:CAT_META[product.category]?.bg??T.paper, borderRadius:100, padding:'5px 14px', width:'fit-content' }}>
             <span style={{ fontSize:'0.85rem' }}>{CAT_META[product.category]?.emoji}</span>
@@ -939,6 +974,7 @@ function ProductDetailView({ product:init, onProduct, isOwn, onAddToCart, showTo
               </div>
             )}
           </div>
+
           <div style={{ background:T.paper, borderRadius:14, padding:'18px 20px', display:'flex', alignItems:'center', gap:20 }}>
             <div>
               <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', color:T.inkL, marginBottom:4, fontWeight:500 }}>PRICE</p>
@@ -946,9 +982,11 @@ function ProductDetailView({ product:init, onProduct, isOwn, onAddToCart, showTo
             </div>
             <div style={{ height:48, width:1, background:T.line }}/>
             <div style={{ marginLeft:'auto', fontFamily:'"Inter",sans-serif', fontSize:'0.78rem', color:'#2D7A2D', fontWeight:600, display:'flex', alignItems:'center', gap:4 }}>
-              <span style={{ width:8, height:8, borderRadius:'50%', background:'#2D7A2D', display:'block' }}/>In Stock
+              <span style={{ width:8, height:8, borderRadius:'50%', background:'#2D7A2D', display:'block' }}/>
+              In Stock
             </div>
           </div>
+
           <div style={{ display:'flex', alignItems:'center', gap:14, padding:'14px 16px', background:T.white, borderRadius:14, border:`1px solid ${T.line}` }}>
             <div style={{ width:44, height:44, borderRadius:'50%', background:T.forest, display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontFamily:'"Playfair Display",serif', fontSize:'1.1rem', fontWeight:700, flexShrink:0 }}>{product.sellerName[0]}</div>
             <div style={{ flex:1, minWidth:0 }}>
@@ -959,6 +997,7 @@ function ProductDetailView({ product:init, onProduct, isOwn, onAddToCart, showTo
               <Award size={12} color={T.forest}/><span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.68rem', color:T.forest, fontWeight:600 }}>Verified</span>
             </div>
           </div>
+
           <div style={{ display:'flex', flexDirection:'column', gap:10, padding:'14px 16px', background:T.offwhite, borderRadius:14, border:`1px solid ${T.line}` }}>
             {([[<Truck size={14}/>, 'Free delivery on orders above ₹50'],[<Clock size={14}/>, 'Ships in 3–5 business days'],[<Shield size={14}/>, '7-day easy returns']] as [React.ReactNode,string][]).map(([icon,text],i) => (
               <div key={i} style={{ display:'flex', alignItems:'center', gap:10 }}>
@@ -967,6 +1006,7 @@ function ProductDetailView({ product:init, onProduct, isOwn, onAddToCart, showTo
               </div>
             ))}
           </div>
+
           <div style={{ display:'flex', alignItems:'center', gap:14 }}>
             <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.78rem', fontWeight:600, color:T.inkL, textTransform:'uppercase', letterSpacing:'0.08em' }}>Quantity</p>
             <div style={{ display:'flex', alignItems:'center', background:T.paper, borderRadius:10, border:`1px solid ${T.line}`, overflow:'hidden' }}>
@@ -975,6 +1015,7 @@ function ProductDetailView({ product:init, onProduct, isOwn, onAddToCart, showTo
               <button onClick={()=>setQty(q=>q+1)} style={{ width:38, height:38, border:'none', background:'transparent', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:T.inkM }}><Plus size={14}/></button>
             </div>
           </div>
+
           {!isOwn ? (
             <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
               <button onClick={()=>{ setCartDone(true); setTimeout(()=>setCartDone(false),2000); onAddToCart(product,qty); }}
@@ -989,6 +1030,7 @@ function ProductDetailView({ product:init, onProduct, isOwn, onAddToCart, showTo
           ) : (
             <div style={{ padding:'14px', background:T.forestXL, borderRadius:12, textAlign:'center', fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', color:T.forest, fontWeight:600 }}>✦ This is your listing</div>
           )}
+
           <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10 }}>
             {[{icon:<Shield size={18}/>,t:'Secure',d:'SSL checkout'},{icon:<RefreshCw size={18}/>,t:'Returns',d:'7 days'},{icon:<Package size={18}/>,t:'Gift Wrap',d:'Free'}].map(({icon,t,d}) => (
               <div key={t} style={{ background:T.paper, borderRadius:12, padding:'12px 8px', textAlign:'center', border:`1px solid ${T.line}` }}>
@@ -1000,6 +1042,7 @@ function ProductDetailView({ product:init, onProduct, isOwn, onAddToCart, showTo
           </div>
         </div>
       </div>
+
       <div style={{ padding:'32px 24px', borderTop:`1px solid ${T.line}`, background:T.white }}>
         <div style={{ maxWidth:800, margin:'0 auto' }}>
           <h2 style={{ fontFamily:'"Playfair Display",serif', fontSize:'1.2rem', fontWeight:700, color:T.ink, marginBottom:16 }}>About This Piece</h2>
@@ -1014,6 +1057,7 @@ function ProductDetailView({ product:init, onProduct, isOwn, onAddToCart, showTo
           </div>
         </div>
       </div>
+
       {reviews.length>0 && (
         <div style={{ padding:'32px 24px', borderTop:`1px solid ${T.line}` }}>
           <div style={{ maxWidth:800, margin:'0 auto' }}>
@@ -1043,6 +1087,7 @@ function ProductDetailView({ product:init, onProduct, isOwn, onAddToCart, showTo
           </div>
         </div>
       )}
+
       {related.length>0 && (
         <div style={{ padding:'32px 24px 48px', borderTop:`1px solid ${T.line}`, background:T.offwhite }}>
           <h2 style={{ fontFamily:'"Playfair Display",serif', fontSize:'1.2rem', fontWeight:700, color:T.ink, marginBottom:20 }}>More from {product.category}</h2>
@@ -1068,6 +1113,7 @@ function ProductDetailView({ product:init, onProduct, isOwn, onAddToCart, showTo
   );
 }
 
+// ── SELL VIEW ──────────────────────────────────────────────
 function SellView({ onAdd, T }:{ onAdd:(p:Partial<Product>)=>Promise<void>; T:Tokens }) {
   const [f, setF] = useState({ name:'', description:'', price:'', category:'Other' as Category, imageUrl:'' });
   const [submitting, setSubmitting] = useState(false);
@@ -1113,6 +1159,7 @@ function SellView({ onAdd, T }:{ onAdd:(p:Partial<Product>)=>Promise<void>; T:To
   );
 }
 
+// ── PROFILE VIEW ───────────────────────────────────────────
 function ProfileView({ user, onProduct, onLogout, T }:{ user:AppUser; onProduct:(p:Product)=>void; onLogout:()=>void; T:Tokens }) {
   const [myProducts, setMyProducts] = useState<Product[]>([]);
   const [loading, setLoading]       = useState(true);
@@ -1147,8 +1194,10 @@ function ProfileView({ user, onProduct, onLogout, T }:{ user:AppUser; onProduct:
         </div>
         <button onClick={onLogout} style={{ padding:'10px 20px', background:T.paper, color:T.inkM, border:`1px solid ${T.line}`, borderRadius:10, fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', fontWeight:600, cursor:'pointer', flexShrink:0 }}>Sign Out</button>
       </div>
+
       {isSeller && (
         <>
+          {/* Stats — product count and sellers only */}
           <div className="stats-grid" style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:14, marginBottom:28 }}>
             {[['Items Listed',myProducts.length,'📦'],['My Shop',user.name,'🏪']].map(([l,v,e]) => (
               <div key={String(l)} style={{ background:T.white, borderRadius:16, padding:'20px 16px', textAlign:'center', boxShadow:`0 2px 10px ${T.shadow}`, border:`1px solid ${T.line}` }}>
@@ -1194,6 +1243,7 @@ function ProfileView({ user, onProduct, onLogout, T }:{ user:AppUser; onProduct:
           )}
         </>
       )}
+
       {!isSeller && (
         <div style={{ textAlign:'center', padding:'60px 20px', background:T.white, borderRadius:20, border:`1px solid ${T.line}` }}>
           <Store size={48} color={T.lineD} style={{ margin:'0 auto 16px', display:'block' }}/>
@@ -1205,6 +1255,7 @@ function ProfileView({ user, onProduct, onLogout, T }:{ user:AppUser; onProduct:
   );
 }
 
+// ── LOGIN VIEW ─────────────────────────────────────────────
 const DEMO_ACCOUNTS = [
   { label:'Guest Buyer', email:'buyer@demo.com', password:'password123', icon:'🛍️', desc:'Browse & buy' },
   { label:'Seller Demo', email:'u1@artisanbazaar.com', password:'password123', icon:'🏪', desc:'List & sell' },
@@ -1261,6 +1312,8 @@ function LoginView({ onLogin, T }:{ onLogin:(u:{role:'buyer'|'seller';name:strin
             {isReg ? 'Join thousands of artisans and buyers' : 'Sign in to your Artisan Bazaar account'}
           </p>
         </div>
+
+        {/* ── DEMO ACCOUNT QUICK-LOGIN BUTTONS ── */}
         {!isReg && (
           <div style={{ marginBottom:20 }}>
             <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', fontWeight:700, color:T.inkL, textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:10, textAlign:'center' }}>Quick Access — Demo Accounts</p>
@@ -1293,6 +1346,7 @@ function LoginView({ onLogin, T }:{ onLogin:(u:{role:'buyer'|'seller';name:strin
             </div>
           </div>
         )}
+
         <div style={{ background:T.white, borderRadius:20, padding:'28px', boxShadow:`0 8px 40px ${T.shadowM}`, border:`1px solid ${T.line}` }}>
           {error && (
             <div style={{ padding:'12px 14px', background:'#FFF0EE', border:'1px solid #F5C5BE', borderRadius:10, display:'flex', alignItems:'center', gap:8, marginBottom:20 }}>
@@ -1315,10 +1369,12 @@ function LoginView({ onLogin, T }:{ onLogin:(u:{role:'buyer'|'seller';name:strin
               <input type="password" value={pass} onChange={e=>setPass(e.target.value)} style={inp} placeholder="••••••••" onKeyDown={e=>{ if(e.key==='Enter') void submit(); }}/>
             </div>
           </div>
+
           <button onClick={()=>void submit()} disabled={loading}
             style={{ width:'100%', marginTop:24, padding:'14px', background:loading?T.lineD:T.forest, color:'#fff', border:'none', borderRadius:12, fontFamily:'"Inter",sans-serif', fontSize:'0.9rem', fontWeight:600, cursor:loading?'not-allowed':'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:8, transition:'background .15s' }}>
             {loading?<><Loader2 size={16} style={{animation:'spin 1s linear infinite'}}/> Please wait…</>:<>{isReg?'Create Account':'Sign In'} <ArrowRight size={16}/></>}
           </button>
+
           <p style={{ textAlign:'center', marginTop:16, fontFamily:'"Inter",sans-serif', fontSize:'0.85rem', color:T.inkL }}>
             {isReg?'Already have an account? ':'New here? '}
             <button onClick={()=>{ setIsReg(r=>!r); setError(''); }} style={{ background:'none', border:'none', color:T.forest, cursor:'pointer', fontWeight:600, fontSize:'0.85rem', fontFamily:'"Inter",sans-serif' }}>
@@ -1331,6 +1387,7 @@ function LoginView({ onLogin, T }:{ onLogin:(u:{role:'buyer'|'seller';name:strin
   );
 }
 
+// ── ADMIN / DEVELOPER VIEW ─────────────────────────────────
 interface SellerGroup { sellerId:string; sellerName:string; products:Product[]; }
 
 function AdminView({ T, showToast }:{ T:Tokens; showToast:(m:string,t?:'success'|'error')=>void }) {
@@ -1363,6 +1420,7 @@ function AdminView({ T, showToast }:{ T:Tokens; showToast:(m:string,t?:'success'
     finally { setDeletingId(null); }
   };
 
+  // Group products by seller
   const sellers: SellerGroup[] = Object.values(
     allProducts.reduce((acc, p) => {
       if (!acc[p.sellerId]) acc[p.sellerId] = { sellerId:p.sellerId, sellerName:p.sellerName, products:[] };
@@ -1376,6 +1434,7 @@ function AdminView({ T, showToast }:{ T:Tokens; showToast:(m:string,t?:'success'
 
   return (
     <div style={{ maxWidth:960, margin:'0 auto' }}>
+      {/* Header */}
       <div style={{ background:`linear-gradient(135deg,#4A1A7A 0%,#2A0A4A 100%)`, borderRadius:20, padding:'28px', marginBottom:24, position:'relative', overflow:'hidden' }}>
         <div style={{ position:'absolute', top:-30, right:-30, width:120, height:120, borderRadius:'50%', background:'rgba(255,255,255,0.05)' }}/>
         <div style={{ position:'relative', zIndex:1 }}>
@@ -1399,11 +1458,14 @@ function AdminView({ T, showToast }:{ T:Tokens; showToast:(m:string,t?:'success'
           </div>
         </div>
       </div>
+
+      {/* Search seller */}
       <div style={{ position:'relative', marginBottom:20 }}>
         <Search style={{ position:'absolute', left:14, top:'50%', transform:'translateY(-50%)', color:T.inkL }} size={15}/>
         <input type="text" placeholder="Search artisan by name…" value={searchSeller} onChange={e=>setSearchSeller(e.target.value)}
           style={{ width:'100%', paddingLeft:42, paddingRight:16, paddingTop:11, paddingBottom:11, background:T.white, border:`1.5px solid ${T.line}`, borderRadius:12, fontSize:'0.88rem', outline:'none', color:T.ink, fontFamily:'"Inter",sans-serif' }}/>
       </div>
+
       {loading ? <Spinner label="Loading all artisans…" T={T}/> : sellers.length===0 ? (
         <div style={{ textAlign:'center', padding:'60px 20px' }}>
           <p style={{ fontFamily:'"Playfair Display",serif', fontStyle:'italic', color:T.inkM, fontSize:'1.1rem' }}>No artisans found</p>
@@ -1414,6 +1476,7 @@ function AdminView({ T, showToast }:{ T:Tokens; showToast:(m:string,t?:'success'
             const isOpen = expandedSeller === seller.sellerId;
             return (
               <div key={seller.sellerId} style={{ background:T.white, borderRadius:16, border:`1px solid ${T.line}`, overflow:'hidden', boxShadow:`0 2px 10px ${T.shadow}` }}>
+                {/* Seller header — click to expand */}
                 <button onClick={()=>setExpandedSeller(isOpen?null:seller.sellerId)}
                   style={{ width:'100%', padding:'16px 20px', background:'none', border:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:14, textAlign:'left' }}>
                   <div style={{ width:44, height:44, borderRadius:'50%', background:'linear-gradient(135deg,#4A1A7A,#7A3AB0)', display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontFamily:'"Playfair Display",serif', fontSize:'1.1rem', fontWeight:700, flexShrink:0 }}>
@@ -1425,14 +1488,19 @@ function AdminView({ T, showToast }:{ T:Tokens; showToast:(m:string,t?:'success'
                   </div>
                   <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                     <div style={{ background:T.forestXL, borderRadius:8, padding:'4px 10px' }}>
-                      <span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.68rem', color:T.forest, fontWeight:600 }}>{seller.products.length} items</span>
+                      <span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.68rem', color:T.forest, fontWeight:600 }}>
+                        {seller.products.length} items
+                      </span>
                     </div>
                     <ChevronRight size={16} color={T.inkL} style={{ transform:isOpen?'rotate(90deg)':'rotate(0deg)', transition:'transform .2s' }}/>
                   </div>
                 </button>
+
+                {/* Products grid — shown when expanded */}
                 <AnimatePresence>
                   {isOpen && (
-                    <motion.div initial={{height:0,opacity:0}} animate={{height:'auto',opacity:1}} exit={{height:0,opacity:0}} transition={{duration:.2}} style={{ overflow:'hidden' }}>
+                    <motion.div initial={{height:0,opacity:0}} animate={{height:'auto',opacity:1}} exit={{height:0,opacity:0}} transition={{duration:.2}}
+                      style={{ overflow:'hidden' }}>
                       <div style={{ padding:'0 16px 16px', borderTop:`1px solid ${T.line}` }}>
                         <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', fontWeight:600, color:'#7A3AB0', textTransform:'uppercase', letterSpacing:'0.1em', padding:'12px 0 10px' }}>
                           Products by {seller.sellerName}
