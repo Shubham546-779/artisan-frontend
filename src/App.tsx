@@ -645,14 +645,24 @@ export function App() {
     setUser(u); setView('home'); setSelProduct(null); showToast(`Welcome, ${u.name}!`);
   }, [showToast]);
 
-  const handleShopConfirm = useCallback(async (shopName:string) => {
-    setShowShopModal(false);
-    try {
-      const updated = await api.auth.updateProfile({role:'seller',shopName});
-      setUser({role:'seller',name:updated.shopName??updated.name,id:updated.id});
-      setView('sell'); showToast('Workshop opened! 🌿');
-    } catch { showToast('Could not open workshop','error'); }
-  }, [showToast]);
+  // ✅ NEW CODE — PASTE THIS
+const handleShopConfirm = useCallback(async (shopName: string) => {
+  setShowShopModal(false);
+  try {
+    // Step 1: Tell backend "make me a seller"
+    await api.auth.updateProfile({ role: 'seller', shopName });
+
+    // Step 2: Logout (remove old "buyer" key)
+    api.auth.logout();
+    setUser({ role: null, name: '', id: '' });
+
+    // Step 3: Send user to login page to get NEW "seller" key
+    setView('login');
+    showToast('You are now a Seller! Please sign in again.');
+  } catch {
+    showToast('Could not open workshop', 'error');
+  }
+}, [showToast]);
 
   const cartCount = cart.reduce((s,i)=>s+i.qty,0);
   const isDev = user.email === DEV_EMAIL || user.name?.toLowerCase().includes('shubham');
