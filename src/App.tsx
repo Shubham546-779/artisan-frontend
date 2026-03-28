@@ -58,7 +58,7 @@ type NavName  = 'home'|'sell'|'profile'|'login'|'admin';
 interface AppUser { role:'buyer'|'seller'|null; name:string; id:string; email?:string; }
 
 // ── DEVELOPER ID ───────────────────────────────────────────
-const DEV_EMAIL = 'shubhamvairagI0@gmail.com';
+const DEV_EMAIL = 'shubhamvairagi0@gmail.com';
 
 // ── HELPERS ────────────────────────────────────────────────
 const clamp = (n:number): React.CSSProperties => ({
