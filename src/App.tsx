@@ -588,11 +588,13 @@ export function App() {
   useEffect(() => { try { localStorage.setItem('ab_cart',JSON.stringify(cart)); } catch {} }, [cart]);
 
   useEffect(() => {
-    if (tokenStore.get()) {
-      api.auth.me().then(u=>setUser({role:u.role,name:u.shopName??u.name,id:u.id}))
-        .catch(e=>{ if(e instanceof ApiError&&e.status===401) tokenStore.remove(); });
-    }
-  }, []);
+  if (tokenStore.get()) {
+    api.auth.me().then(u=>{
+      const savedEmail = localStorage.getItem('ab_user_email') || '';
+      setUser({role:u.role,name:u.shopName??u.name,id:u.id,email:savedEmail});
+    }).catch(e=>{ if(e instanceof ApiError&&e.status===401) tokenStore.remove(); });
+  }
+}, []);
 
   useEffect(() => {
     clearTimeout(timer.current);
@@ -636,14 +638,17 @@ export function App() {
     setView(v); setSelProduct(null);
   }, [user.role]);
 
-  const handleLogout = useCallback(() => {
-    api.auth.logout(); setUser({role:null,name:'',id:''});
-    setView('home'); setSelProduct(null); showToast('Signed out');
-  }, [showToast]);
+ const handleLogout = useCallback(() => {
+  api.auth.logout(); 
+  localStorage.removeItem('ab_user_email');
+  setUser({role:null,name:'',id:''});
+  setView('home'); setSelProduct(null); showToast('Signed out');
+}, [showToast]);
 
   const handleLogin = useCallback((u:{role:'buyer'|'seller';name:string;id:string;email?:string}) => {
-    setUser(u); setView('home'); setSelProduct(null); showToast(`Welcome, ${u.name}!`);
-  }, [showToast]);
+  if (u.email) localStorage.setItem('ab_user_email', u.email);
+  setUser(u); setView('home'); setSelProduct(null); showToast(`Welcome, ${u.name}!`);
+}, [showToast]);
 
   const handleShopConfirm = useCallback(async (shopName:string) => {
     setShowShopModal(false);
