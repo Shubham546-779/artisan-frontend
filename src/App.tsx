@@ -234,41 +234,25 @@ function OrderFormModal({ cart, onClose, onSuccess, T }:{ cart:CartItem[]; onClo
   };
 
   const placeOrder = async () => {
-  const err = validate(); if (err) { setError(err); return; }
-  setSending(true); setError('');
-  try {
-    const ejs = (window as any).emailjs;
-    if (!ejs) throw new Error('EmailJS not loaded');
-    
-    const itemsText = cart.map(i =>
-      `• ${i.product.name} (x${i.qty}) — Rs.${(i.product.price*i.qty).toFixed(2)}`
-    ).join('\n');
-
-    await ejs.send(
-      import.meta.env.VITE_EMAILJS_SERVICE_ID,
-      import.meta.env.VITE_EMAILJS_TEMPLATE_ID,
-      {
-        order_id: orderId,
-        customer_name: form.name,
-        name: form.name,
-        to_email: form.email,
-        email: form.email,
-        mobile: form.mobile,
-        order_items: itemsText,
-        order_total: total.toFixed(2),
-        delivery_address: `${form.address}, ${form.city} - ${form.pincode}`,
-        order_date: new Date().toLocaleDateString('en-IN', {
-          day: 'numeric', month: 'long', year: 'numeric'
-        }),
-      },
-      import.meta.env.VITE_EMAILJS_PUBLIC_KEY,
-    );
-    onSuccess();
-  } catch (e) {
-    console.error('EmailJS error:', e);
-    setError('Could not send confirmation. Please try again.');
-  } finally { setSending(false); }
-};
+    const err = validate(); if (err) { setError(err); return; }
+    setSending(true); setError('');
+    try {
+      const emailjs = await import('@emailjs/browser');
+      const itemsText = cart.map(i=>`• ${i.product.name} (x${i.qty}) — Rs.${(i.product.price*i.qty).toFixed(2)}`).join('\n');
+      await emailjs.send(
+        import.meta.env.VITE_EMAILJS_SERVICE_ID,
+        import.meta.env.VITE_EMAILJS_TEMPLATE_ID,
+        { order_id:orderId, customer_name:form.name, name:form.name,
+          customer_email:form.email, to_email:form.email, email:form.email,
+          mobile:form.mobile, order_items:itemsText, order_total:total.toFixed(2),
+          delivery_address:`${form.address}, ${form.city} - ${form.pincode}`,
+          order_date:new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'}) },
+        import.meta.env.VITE_EMAILJS_PUBLIC_KEY,
+      );
+      onSuccess();
+    } catch (e) { console.error('EmailJS error:', e); setError('Could not send confirmation. Please try again.'); }
+    finally { setSending(false); }
+  };
 
   return (
     <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
