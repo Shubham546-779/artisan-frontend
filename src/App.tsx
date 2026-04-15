@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Search, Star, ChevronLeft, ChevronRight, ShoppingCart, Shield,
@@ -56,10 +55,16 @@ const CAT_META: Record<string, { emoji:string; label:string; color:string; bg:st
 interface CartItem { product: Product; qty: number; }
 type ViewName = 'home'|'sell'|'profile'|'product'|'login'|'admin';
 type NavName  = 'home'|'sell'|'profile'|'login'|'admin';
-interface AppUser { role:'buyer'|'seller'|null; name:string; id:string; email?:string; }
+
+// ── UPDATED: added email + _loginEmail for re-auth ─────────
+interface AppUser {
+  role: 'buyer'|'seller'|null;
+  name: string;
+  id: string;
+  email?: string;
+}
 
 // ── DEVELOPER ID ───────────────────────────────────────────
-// Set this to your developer account email
 const DEV_EMAIL = 'shubhamvairagl0@gmail.com';
 
 // ── HELPERS ────────────────────────────────────────────────
@@ -229,25 +234,41 @@ function OrderFormModal({ cart, onClose, onSuccess, T }:{ cart:CartItem[]; onClo
   };
 
   const placeOrder = async () => {
-    const err = validate(); if (err) { setError(err); return; }
-    setSending(true); setError('');
-    try {
-      const emailjs = await import('@emailjs/browser');
-      const itemsText = cart.map(i=>`• ${i.product.name} (x${i.qty}) — Rs.${(i.product.price*i.qty).toFixed(2)}`).join('\n');
-      await emailjs.send(
-        import.meta.env.VITE_EMAILJS_SERVICE_ID,
-        import.meta.env.VITE_EMAILJS_TEMPLATE_ID,
-        { order_id:orderId, customer_name:form.name, name:form.name,
-          customer_email:form.email, to_email:form.email, email:form.email,
-          mobile:form.mobile, order_items:itemsText, order_total:total.toFixed(2),
-          delivery_address:`${form.address}, ${form.city} - ${form.pincode}`,
-          order_date:new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'}) },
-        import.meta.env.VITE_EMAILJS_PUBLIC_KEY,
-      );
-      onSuccess();
-    } catch (e) { console.error('EmailJS error:', e); setError('Could not send confirmation. Please try again.'); }
-    finally { setSending(false); }
-  };
+  const err = validate(); if (err) { setError(err); return; }
+  setSending(true); setError('');
+  try {
+    const ejs = (window as any).emailjs;
+    if (!ejs) throw new Error('EmailJS not loaded');
+    
+    const itemsText = cart.map(i =>
+      `• ${i.product.name} (x${i.qty}) — Rs.${(i.product.price*i.qty).toFixed(2)}`
+    ).join('\n');
+
+    await ejs.send(
+      import.meta.env.VITE_EMAILJS_SERVICE_ID,
+      import.meta.env.VITE_EMAILJS_TEMPLATE_ID,
+      {
+        order_id: orderId,
+        customer_name: form.name,
+        name: form.name,
+        to_email: form.email,
+        email: form.email,
+        mobile: form.mobile,
+        order_items: itemsText,
+        order_total: total.toFixed(2),
+        delivery_address: `${form.address}, ${form.city} - ${form.pincode}`,
+        order_date: new Date().toLocaleDateString('en-IN', {
+          day: 'numeric', month: 'long', year: 'numeric'
+        }),
+      },
+      import.meta.env.VITE_EMAILJS_PUBLIC_KEY,
+    );
+    onSuccess();
+  } catch (e) {
+    console.error('EmailJS error:', e);
+    setError('Could not send confirmation. Please try again.');
+  } finally { setSending(false); }
+};
 
   return (
     <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
@@ -382,15 +403,14 @@ function ImageUploader({ value, onChange, T }:{ value:string; onChange:(url:stri
   const [error, setError]           = useState('');
   const [urlMode, setUrlMode]       = useState(false);
   const [urlInput, setUrlInput]     = useState('');
-  const fileRef    = useRef<HTMLInputElement>(null);  // gallery / any file
-  const cameraRef  = useRef<HTMLInputElement>(null);  // camera capture (mobile)
-  const folderRef  = useRef<HTMLInputElement>(null);  // folder browse (desktop)
+  const fileRef    = useRef<HTMLInputElement>(null);
+  const cameraRef  = useRef<HTMLInputElement>(null);
+  const folderRef  = useRef<HTMLInputElement>(null);
 
   const reset = () => { setPreview(''); onChange(''); setUrlInput(''); setUrlMode(false); setError(''); };
 
   const uploadFile = async (file:File) => {
     setUploading(true); setError('');
-    // show local preview immediately
     const reader = new FileReader();
     reader.onload = e => { const d=e.target?.result as string; setPreview(d); onChange(d); };
     reader.readAsDataURL(file);
@@ -413,7 +433,6 @@ function ImageUploader({ value, onChange, T }:{ value:string; onChange:(url:stri
 
   const mobile = isMobile();
 
-  // ── shared button style helper ──────────────────────────
   const pickBtn = (accent:string, bg:string): React.CSSProperties => ({
     display:'flex', alignItems:'center', justifyContent:'center', gap:6,
     padding:'9px 14px', background:bg, color:accent,
@@ -424,13 +443,10 @@ function ImageUploader({ value, onChange, T }:{ value:string; onChange:(url:stri
 
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-      {/* hidden file inputs */}
       <input ref={fileRef}   type="file" accept="image/*"             onChange={e=>{ const f=e.target.files?.[0]; if(f) uploadFile(f); }} style={{display:'none'}}/>
       <input ref={cameraRef} type="file" accept="image/*" capture="environment" onChange={e=>{ const f=e.target.files?.[0]; if(f) uploadFile(f); }} style={{display:'none'}}/>
-      {/* folder ref — no capture, no accept restriction so OS shows folder picker on desktop */}
       <input ref={folderRef} type="file" accept="image/*"             onChange={e=>{ const f=e.target.files?.[0]; if(f) uploadFile(f); }} style={{display:'none'}}/>
 
-      {/* ── PREVIEW ── */}
       {preview ? (
         <div style={{ position:'relative', borderRadius:12, overflow:'hidden', border:`1px solid ${T.line}` }}>
           <img src={preview} alt="Preview" style={{ width:'100%', height:200, objectFit:'cover', display:'block' }}/>
@@ -440,11 +456,9 @@ function ImageUploader({ value, onChange, T }:{ value:string; onChange:(url:stri
               <span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.78rem', color:'#fff', fontWeight:600 }}>Uploading…</span>
             </div>
           )}
-          {/* top-right remove */}
           <button onClick={reset} style={{ position:'absolute', top:8, right:8, background:T.rust, border:'none', borderRadius:'50%', width:30, height:30, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', color:'#fff' }}>
             <X size={13}/>
           </button>
-          {/* bottom action bar */}
           <div style={{ position:'absolute', bottom:0, left:0, right:0, padding:'8px 10px', background:'rgba(0,0,0,0.55)', backdropFilter:'blur(4px)', display:'flex', gap:8 }}>
             {mobile ? (
               <>
@@ -461,10 +475,8 @@ function ImageUploader({ value, onChange, T }:{ value:string; onChange:(url:stri
           </div>
         </div>
       ) : (
-        /* ── EMPTY STATE ── */
         <div onDragOver={e=>e.preventDefault()} onDrop={e=>{ e.preventDefault(); const f=e.dataTransfer.files?.[0]; if(f) uploadFile(f); }}
           style={{ border:`2px dashed ${T.line}`, borderRadius:12, background:T.offwhite, overflow:'hidden' }}>
-
           {uploading ? (
             <div style={{ padding:'36px 20px', display:'flex', flexDirection:'column', alignItems:'center', gap:12 }}>
               <Loader2 size={32} color={T.forest} style={{animation:'spin 1s linear infinite'}}/>
@@ -472,7 +484,6 @@ function ImageUploader({ value, onChange, T }:{ value:string; onChange:(url:stri
             </div>
           ) : (
             <>
-              {/* drag hint */}
               <div style={{ padding:'24px 20px 16px', textAlign:'center' }}>
                 <div style={{ width:52, height:52, background:T.forestXL, borderRadius:12, display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 10px' }}>
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={T.forest} strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
@@ -482,70 +493,39 @@ function ImageUploader({ value, onChange, T }:{ value:string; onChange:(url:stri
                 </p>
                 <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.7rem', color:T.inkL }}>JPG · PNG · WEBP · Max 5 MB</p>
               </div>
-
-              {/* pick buttons */}
               <div style={{ padding:'0 14px 14px', display:'flex', gap:8, flexWrap:'wrap' }}>
                 {mobile ? (
                   <>
-                    <button onClick={()=>fileRef.current?.click()}
-                      style={pickBtn(T.forest, T.forestXL)}>
-                      🖼️ Gallery
-                    </button>
-                    <button onClick={()=>cameraRef.current?.click()}
-                      style={pickBtn(T.earth, T.earthXL)}>
-                      📷 Camera
-                    </button>
+                    <button onClick={()=>fileRef.current?.click()} style={pickBtn(T.forest, T.forestXL)}>🖼️ Gallery</button>
+                    <button onClick={()=>cameraRef.current?.click()} style={pickBtn(T.earth, T.earthXL)}>📷 Camera</button>
                   </>
                 ) : (
                   <>
-                    <button onClick={()=>folderRef.current?.click()}
-                      style={pickBtn(T.forest, T.forestXL)}>
-                      📁 From Folder
-                    </button>
-                    <button onClick={()=>fileRef.current?.click()}
-                      style={pickBtn(T.earth, T.earthXL)}>
-                      🖼️ Browse Files
-                    </button>
+                    <button onClick={()=>folderRef.current?.click()} style={pickBtn(T.forest, T.forestXL)}>📁 From Folder</button>
+                    <button onClick={()=>fileRef.current?.click()} style={pickBtn(T.earth, T.earthXL)}>🖼️ Browse Files</button>
                   </>
                 )}
-                <button onClick={()=>setUrlMode(v=>!v)}
-                  style={pickBtn(T.inkM, T.paper)}>
-                  🔗 Paste URL
-                </button>
+                <button onClick={()=>setUrlMode(v=>!v)} style={pickBtn(T.inkM, T.paper)}>🔗 Paste URL</button>
               </div>
             </>
           )}
         </div>
       )}
 
-      {/* ── URL INPUT (shown when urlMode=true) ── */}
       <AnimatePresence>
         {urlMode && (
           <motion.div initial={{opacity:0,y:-6}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-6}} transition={{duration:.15}}
             style={{ background:T.paper, borderRadius:10, padding:'12px 14px', border:`1.5px solid ${T.forestL}` }}>
             <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', fontWeight:600, color:T.forest, textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:8 }}>Paste Image URL</p>
             <div style={{ display:'flex', gap:8 }}>
-              <input
-                type="url"
-                autoFocus
-                placeholder="https://example.com/photo.jpg"
-                value={urlInput}
+              <input type="url" autoFocus placeholder="https://example.com/photo.jpg" value={urlInput}
                 onChange={e=>{ setUrlInput(e.target.value); setError(''); }}
                 onKeyDown={e=>{ if(e.key==='Enter') applyUrl(); if(e.key==='Escape') setUrlMode(false); }}
-                style={{ flex:1, padding:'9px 12px', background:T.white, border:`1.5px solid ${T.line}`, borderRadius:8, fontSize:'0.85rem', outline:'none', color:T.ink, fontFamily:'"Inter",sans-serif' }}
-              />
-              <button onClick={applyUrl}
-                style={{ padding:'9px 16px', background:T.forest, color:'#fff', border:'none', borderRadius:8, fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', fontWeight:600, cursor:'pointer', whiteSpace:'nowrap' }}>
-                Use
-              </button>
-              <button onClick={()=>{ setUrlMode(false); setError(''); }}
-                style={{ width:36, height:36, background:T.paper, border:`1px solid ${T.line}`, borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', color:T.inkL, flexShrink:0 }}>
-                <X size={14}/>
-              </button>
+                style={{ flex:1, padding:'9px 12px', background:T.white, border:`1.5px solid ${T.line}`, borderRadius:8, fontSize:'0.85rem', outline:'none', color:T.ink, fontFamily:'"Inter",sans-serif' }}/>
+              <button onClick={applyUrl} style={{ padding:'9px 16px', background:T.forest, color:'#fff', border:'none', borderRadius:8, fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', fontWeight:600, cursor:'pointer', whiteSpace:'nowrap' }}>Use</button>
+              <button onClick={()=>{ setUrlMode(false); setError(''); }} style={{ width:36, height:36, background:T.paper, border:`1px solid ${T.line}`, borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', color:T.inkL, flexShrink:0 }}><X size={14}/></button>
             </div>
-            <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.7rem', color:T.inkL, marginTop:6 }}>
-              Press Enter to confirm · Esc to cancel
-            </p>
+            <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.7rem', color:T.inkL, marginTop:6 }}>Press Enter to confirm · Esc to cancel</p>
           </motion.div>
         )}
       </AnimatePresence>
@@ -560,9 +540,76 @@ function ImageUploader({ value, onChange, T }:{ value:string; onChange:(url:stri
   );
 }
 
+// ── RE-LOGIN MODAL ─────────────────────────────────────────
+// Shown after role upgrade so user can get a fresh seller token
+function ReLoginModal({ email, shopName, onSuccess, onClose, T }:
+  { email:string; shopName:string; onSuccess:(u:{role:'buyer'|'seller';name:string;id:string;email:string})=>void; onClose:()=>void; T:Tokens }) {
+  const [pass, setPass]       = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError]     = useState('');
+
+  const submit = async () => {
+    if (!pass.trim()) { setError('Please enter your password'); return; }
+    setLoading(true); setError('');
+    try {
+      const res = await api.auth.login(email, pass);
+      onSuccess({ role: res.user.role, name: res.user.shopName ?? res.user.name, id: res.user.id, email });
+    } catch (e) {
+      if (e instanceof ApiError) setError(e.message);
+      else setError('Could not sign in. Please try again.');
+    } finally { setLoading(false); }
+  };
+
+  return (
+    <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
+      style={{ position:'fixed', inset:0, zIndex:800, background:'rgba(0,0,0,0.6)', backdropFilter:'blur(6px)', display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
+      <motion.div initial={{scale:0.9,y:20}} animate={{scale:1,y:0}} transition={{type:'spring',stiffness:220,damping:22}}
+        style={{ background:T.white, borderRadius:20, padding:'32px 28px', maxWidth:380, width:'100%', boxShadow:`0 24px 64px ${T.shadowL}` }}>
+        <div style={{ textAlign:'center', marginBottom:24 }}>
+          <div style={{ fontSize:'2.5rem', marginBottom:12 }}>🔑</div>
+          <h2 style={{ fontFamily:'"Playfair Display",serif', fontSize:'1.3rem', fontWeight:700, color:T.ink, marginBottom:8 }}>One Last Step</h2>
+          <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.85rem', color:T.inkL, lineHeight:1.6 }}>
+            Your workshop <strong style={{color:T.ink}}>"{shopName}"</strong> is ready!<br/>
+            Sign in once more to activate your seller account.
+          </p>
+        </div>
+
+        <div style={{ background:T.paper, borderRadius:10, padding:'10px 14px', marginBottom:20, display:'flex', alignItems:'center', gap:8 }}>
+          <User size={14} color={T.inkL}/>
+          <span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', color:T.inkM }}>{email}</span>
+        </div>
+
+        <div style={{ marginBottom:16 }}>
+          <label style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.75rem', fontWeight:600, color:T.inkL, textTransform:'uppercase', letterSpacing:'0.08em' }}>Password</label>
+          <input type="password" placeholder="••••••••" value={pass}
+            onChange={e=>{ setPass(e.target.value); setError(''); }}
+            onKeyDown={e=>{ if(e.key==='Enter') void submit(); }}
+            autoFocus
+            style={{ width:'100%', marginTop:8, padding:'12px 14px', background:T.offwhite, border:`1.5px solid ${error?T.rust:T.line}`, borderRadius:10, fontSize:'0.92rem', outline:'none', color:T.ink, fontFamily:'"Inter",sans-serif' }}/>
+        </div>
+
+        {error && (
+          <div style={{ padding:'10px 12px', background:'#FFF0EE', border:'1px solid #F5C5BE', borderRadius:8, display:'flex', alignItems:'center', gap:8, marginBottom:14 }}>
+            <AlertCircle size={13} color="#9B3D2A"/>
+            <span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', color:'#9B3D2A' }}>{error}</span>
+          </div>
+        )}
+
+        <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+          <button onClick={()=>void submit()} disabled={loading}
+            style={{ padding:'13px', background:loading?T.inkL:T.forest, color:'#fff', border:'none', borderRadius:10, fontFamily:'"Inter",sans-serif', fontSize:'0.88rem', fontWeight:600, cursor:loading?'not-allowed':'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+            {loading ? <><Loader2 size={16} style={{animation:'spin 1s linear infinite'}}/> Signing in…</> : <>Activate Seller Account <ArrowRight size={15}/></>}
+          </button>
+          <button onClick={onClose} style={{ padding:'11px', background:'transparent', color:T.inkL, border:`1px solid ${T.line}`, borderRadius:10, fontFamily:'"Inter",sans-serif', fontSize:'0.85rem', cursor:'pointer' }}>Cancel</button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
 // ── APP ────────────────────────────────────────────────────
 export function App() {
-  const [darkMode, setDarkMode]       = useState(() => {
+  const [darkMode, setDarkMode] = useState(() => {
     try { return localStorage.getItem('ab_dark')==='true'; } catch { return false; }
   });
   const T = makeTokens(darkMode);
@@ -581,7 +628,11 @@ export function App() {
     try { const s=localStorage.getItem('ab_cart'); return s?JSON.parse(s):[]; } catch { return []; }
   });
   const [cartOpen, setCartOpen]       = useState(false);
-  const [showShopModal, setShowShopModal] = useState(false);
+  const [showShopModal, setShowShopModal]   = useState(false);
+
+  // ── NEW: re-login modal state ──────────────────────────
+  const [reLoginData, setReLoginData] = useState<{email:string; shopName:string}|null>(null);
+
   const timer = useRef<ReturnType<typeof setTimeout>|undefined>(undefined);
   const showToast = useCallback((msg:string, type:'success'|'error'='success') => setToast({msg,type}), []);
 
@@ -590,7 +641,7 @@ export function App() {
 
   useEffect(() => {
     if (tokenStore.get()) {
-      api.auth.me().then(u=>setUser({role:u.role,name:u.shopName??u.name,id:u.id}))
+      api.auth.me().then(u=>setUser({role:u.role,name:u.shopName??u.name,id:u.id,email:u.email}))
         .catch(e=>{ if(e instanceof ApiError&&e.status===401) tokenStore.remove(); });
     }
   }, []);
@@ -619,7 +670,7 @@ export function App() {
     showToast(`Added to basket!`);
   }, [showToast]);
 
-  const updateCartQty = useCallback((id:string,qty:number)=>setCart(p=>p.map(i=>i.product.id===id?{...i,qty}:i)),[]);
+  const updateCartQty  = useCallback((id:string,qty:number)=>setCart(p=>p.map(i=>i.product.id===id?{...i,qty}:i)),[]);
   const removeFromCart = useCallback((id:string)=>setCart(p=>p.filter(i=>i.product.id!==id)),[]);
 
   const goToProduct = useCallback((p:Product) => {
@@ -646,28 +697,39 @@ export function App() {
     setUser(u); setView('home'); setSelProduct(null); showToast(`Welcome, ${u.name}!`);
   }, [showToast]);
 
- 
-const handleShopConfirm = useCallback(async (shopName: string) => {
-  setShowShopModal(false);
-  try {
-    await api.auth.updateProfile({ role: 'seller', shopName });
-    setUser({ role: 'seller', name: shopName, id: user.id });
+  // ── FIXED handleShopConfirm ────────────────────────────
+  // After updating the role on the backend we need a FRESH JWT
+  // that encodes role=seller. We show a small re-login modal
+  // so the user enters their password once more and gets a new token.
+  const handleShopConfirm = useCallback(async (shopName: string) => {
+    setShowShopModal(false);
+    try {
+      await api.auth.updateProfile({ role: 'seller', shopName });
+      // Wipe the old buyer token so API calls use the new one after re-login
+      api.auth.logout();
+      setUser({ role: null, name: '', id: '' });
+      // Show the lightweight re-login modal (keeps email pre-filled)
+      setReLoginData({ email: user.email ?? '', shopName });
+    } catch {
+      showToast('Could not open workshop', 'error');
+    }
+  }, [user.email, showToast]);
+
+  // Called when re-login modal succeeds — user now has a seller JWT
+  const handleReLoginSuccess = useCallback((u:{role:'buyer'|'seller';name:string;id:string;email:string}) => {
+    setReLoginData(null);
+    setUser(u);
     setView('sell');
-    showToast('Workshop opened! 🌿');
-  } catch {
-    showToast('Could not open workshop', 'error');
-  }
-}, [user.id, showToast]);
+    showToast(`Workshop opened! Welcome, ${u.name} 🌿`);
+  }, [showToast]);
 
   const cartCount = cart.reduce((s,i)=>s+i.qty,0);
   const isDev = user.email === DEV_EMAIL || user.name?.toLowerCase().includes('shubham');
 
-  // Bamboo SVG background — subtle, works in both light & dark
-  const bambooBg = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='200'%3E%3Crect width='120' height='200' fill='none'/%3E%3C!-- stalk 1 --%3E%3Crect x='18' y='0' width='10' height='200' rx='5' fill='%2348724A' opacity='0.13'/%3E%3Crect x='20' y='30' width='6' height='3' rx='1' fill='%2348724A' opacity='0.18'/%3E%3Crect x='20' y='70' width='6' height='3' rx='1' fill='%2348724A' opacity='0.18'/%3E%3Crect x='20' y='110' width='6' height='3' rx='1' fill='%2348724A' opacity='0.18'/%3E%3Crect x='20' y='150' width='6' height='3' rx='1' fill='%2348724A' opacity='0.18'/%3E%3Crect x='20' y='190' width='6' height='3' rx='1' fill='%2348724A' opacity='0.18'/%3E%3C!-- leaf 1 --%3E%3Cellipse cx='14' cy='52' rx='18' ry='4' fill='%2348724A' opacity='0.10' transform='rotate(-30 14 52)'/%3E%3Cellipse cx='32' cy='92' rx='16' ry='3.5' fill='%2348724A' opacity='0.09' transform='rotate(25 32 92)'/%3E%3C!-- stalk 2 --%3E%3Crect x='72' y='0' width='9' height='200' rx='4.5' fill='%2348724A' opacity='0.10'/%3E%3Crect x='74' y='50' width='5' height='3' rx='1' fill='%2348724A' opacity='0.15'/%3E%3Crect x='74' y='90' width='5' height='3' rx='1' fill='%2348724A' opacity='0.15'/%3E%3Crect x='74' y='130' width='5' height='3' rx='1' fill='%2348724A' opacity='0.15'/%3E%3Crect x='74' y='170' width='5' height='3' rx='1' fill='%2348724A' opacity='0.15'/%3E%3C!-- leaf 2 --%3E%3Cellipse cx='66' cy='72' rx='17' ry='3.5' fill='%2348724A' opacity='0.09' transform='rotate(28 66 72)'/%3E%3Cellipse cx='84' cy='112' rx='15' ry='3' fill='%2348724A' opacity='0.08' transform='rotate(-22 84 112)'/%3E%3C!-- stalk 3 thin --%3E%3Crect x='106' y='0' width='6' height='200' rx='3' fill='%2348724A' opacity='0.07'/%3E%3Crect x='107' y='60' width='4' height='2' rx='1' fill='%2348724A' opacity='0.10'/%3E%3Crect x='107' y='120' width='4' height='2' rx='1' fill='%2348724A' opacity='0.10'/%3E%3C/svg%3E")`;
+  const bambooBg = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='200'%3E%3Crect width='120' height='200' fill='none'/%3E%3Crect x='18' y='0' width='10' height='200' rx='5' fill='%2348724A' opacity='0.13'/%3E%3Crect x='20' y='30' width='6' height='3' rx='1' fill='%2348724A' opacity='0.18'/%3E%3Crect x='20' y='70' width='6' height='3' rx='1' fill='%2348724A' opacity='0.18'/%3E%3Crect x='20' y='110' width='6' height='3' rx='1' fill='%2348724A' opacity='0.18'/%3E%3Crect x='20' y='150' width='6' height='3' rx='1' fill='%2348724A' opacity='0.18'/%3E%3Crect x='20' y='190' width='6' height='3' rx='1' fill='%2348724A' opacity='0.18'/%3E%3Cellipse cx='14' cy='52' rx='18' ry='4' fill='%2348724A' opacity='0.10' transform='rotate(-30 14 52)'/%3E%3Cellipse cx='32' cy='92' rx='16' ry='3.5' fill='%2348724A' opacity='0.09' transform='rotate(25 32 92)'/%3E%3Crect x='72' y='0' width='9' height='200' rx='4.5' fill='%2348724A' opacity='0.10'/%3E%3Crect x='74' y='50' width='5' height='3' rx='1' fill='%2348724A' opacity='0.15'/%3E%3Crect x='74' y='90' width='5' height='3' rx='1' fill='%2348724A' opacity='0.15'/%3E%3Crect x='74' y='130' width='5' height='3' rx='1' fill='%2348724A' opacity='0.15'/%3E%3Crect x='74' y='170' width='5' height='3' rx='1' fill='%2348724A' opacity='0.15'/%3E%3Cellipse cx='66' cy='72' rx='17' ry='3.5' fill='%2348724A' opacity='0.09' transform='rotate(28 66 72)'/%3E%3Cellipse cx='84' cy='112' rx='15' ry='3' fill='%2348724A' opacity='0.08' transform='rotate(-22 84 112)'/%3E%3Crect x='106' y='0' width='6' height='200' rx='3' fill='%2348724A' opacity='0.07'/%3E%3Crect x='107' y='60' width='4' height='2' rx='1' fill='%2348724A' opacity='0.10'/%3E%3Crect x='107' y='120' width='4' height='2' rx='1' fill='%2348724A' opacity='0.10'/%3E%3C/svg%3E")`;
 
   return (
     <div style={{ minHeight:'100vh', background:T.offwhite, color:T.ink, fontFamily:'"Inter",sans-serif', paddingBottom:'5rem', position:'relative' }}>
-      {/* Bamboo background layer */}
       <div style={{ position:'fixed', inset:0, zIndex:0, backgroundImage:bambooBg, backgroundSize:'120px 200px', backgroundRepeat:'repeat', opacity: darkMode ? 0.6 : 1, pointerEvents:'none' }}/>
       <div style={{ position:'relative', zIndex:1 }}>
       <style>{`
@@ -688,6 +750,19 @@ const handleShopConfirm = useCallback(async (shopName: string) => {
       <AnimatePresence>{toast&&<Toast msg={toast.msg} type={toast.type} onClose={()=>setToast(null)}/>}</AnimatePresence>
       <AnimatePresence>{cartOpen&&<CartDrawer cart={cart} onClose={()=>setCartOpen(false)} onUpdateQty={updateCartQty} onRemove={removeFromCart} onClearCart={()=>setCart([])} showToast={showToast} T={T} onBrowseWares={()=>{ setCartOpen(false); setView('home'); setSelProduct(null); }}/>}</AnimatePresence>
       <AnimatePresence>{showShopModal&&<ShopNameModal onConfirm={handleShopConfirm} onClose={()=>setShowShopModal(false)} T={T}/>}</AnimatePresence>
+
+      {/* ── RE-LOGIN MODAL (shown after role upgrade) ── */}
+      <AnimatePresence>
+        {reLoginData && (
+          <ReLoginModal
+            email={reLoginData.email}
+            shopName={reLoginData.shopName}
+            onSuccess={handleReLoginSuccess}
+            onClose={()=>{ setReLoginData(null); showToast('Workshop setup cancelled'); }}
+            T={T}
+          />
+        )}
+      </AnimatePresence>
 
       <div style={{ background:T.forest, height:'env(safe-area-inset-top)', position:'fixed', top:0, left:0, right:0, zIndex:101 }}/>
 
@@ -717,12 +792,10 @@ const handleShopConfirm = useCallback(async (shopName: string) => {
             </div>
           )}
           <div style={{ marginLeft:'auto', display:'flex', alignItems:'center', gap:8 }}>
-            {/* Dark mode toggle */}
             <button onClick={()=>setDarkMode(d=>!d)}
               style={{ width:36, height:36, borderRadius:8, border:`1px solid ${T.line}`, background:T.paper, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', color:T.inkM, flexShrink:0 }}>
               {darkMode ? <Sun size={16}/> : <Moon size={16}/>}
             </button>
-            {/* User name chip — taps to profile, no sign out here */}
             {user.role ? (
               <div onClick={()=>nav('profile')} style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 10px', background:T.paper, borderRadius:10, border:`1px solid ${T.line}`, cursor:'pointer' }}>
                 <div style={{ width:28, height:28, borderRadius:'50%', background:T.forest, display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontSize:'0.78rem', fontWeight:700, flexShrink:0 }}>{user.name[0]?.toUpperCase()}</div>
@@ -817,7 +890,7 @@ const handleShopConfirm = useCallback(async (shopName: string) => {
           })}
         </div>
       </nav>
-      </div>{/* end relative z-1 wrapper */}
+      </div>
     </div>
   );
 }
@@ -828,7 +901,6 @@ function HomeView({ products, loading, selectedCat, setSelectedCat, onProduct, o
     onProduct:(p:Product)=>void; onAddToCart:(p:Product,qty?:number)=>void; T:Tokens }) {
   return (
     <div>
-      {/* Hero Banner */}
       <div style={{ background:`linear-gradient(135deg, ${T.forest} 0%, #1a3320 100%)`, padding:'40px 20px 36px', position:'relative', overflow:'hidden' }}>
         <div style={{ position:'absolute', top:-60, right:-60, width:200, height:200, borderRadius:'50%', background:'rgba(255,255,255,0.04)', pointerEvents:'none' }}/>
         <div style={{ position:'absolute', bottom:-40, left:-40, width:160, height:160, borderRadius:'50%', background:'rgba(255,255,255,0.03)', pointerEvents:'none' }}/>
@@ -843,7 +915,6 @@ function HomeView({ products, loading, selectedCat, setSelectedCat, onProduct, o
           <p style={{ fontFamily:'"Crimson Pro",serif', fontSize:'clamp(1rem,2.5vw,1.2rem)', color:'rgba(255,255,255,0.7)', lineHeight:1.7, maxWidth:480, margin:'0 auto 28px', fontStyle:'italic' }}>
             A curated marketplace of authentic handcrafted goods, made with care by skilled artisans across India.
           </p>
-          {/* Stats row — only product count and sellers */}
           <div style={{ display:'flex', justifyContent:'center', gap:8, flexWrap:'wrap', marginBottom:24 }}>
             {[[`${products.length > 0 ? products.length : '70'}+`,'Products'],['500+','Artisans']].map(([v,l]) => (
               <div key={l} style={{ background:'rgba(255,255,255,0.1)', borderRadius:12, padding:'12px 20px', backdropFilter:'blur(4px)', border:'1px solid rgba(255,255,255,0.12)' }}>
@@ -852,11 +923,9 @@ function HomeView({ products, loading, selectedCat, setSelectedCat, onProduct, o
               </div>
             ))}
           </div>
-
         </div>
       </div>
 
-      {/* Category Pills */}
       <div style={{ background:T.white, borderBottom:`1px solid ${T.line}`, padding:'12px 16px', overflowX:'auto', position:'sticky', top:60, zIndex:50 }} className="scrollbar-hide">
         <div style={{ display:'flex', gap:8, minWidth:'max-content' }}>
           {(['All',...CATEGORIES] as (Category|'All')[]).map(cat => {
@@ -871,7 +940,6 @@ function HomeView({ products, loading, selectedCat, setSelectedCat, onProduct, o
         </div>
       </div>
 
-      {/* Products */}
       <div style={{ maxWidth:1200, margin:'0 auto', padding:'24px 16px 40px' }}>
         {selectedCat!=='All' && (
           <motion.div initial={{opacity:0,y:-8}} animate={{opacity:1,y:0}} style={{ marginBottom:24 }}>
@@ -891,9 +959,7 @@ function HomeView({ products, loading, selectedCat, setSelectedCat, onProduct, o
             <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.85rem', color:T.inkL, marginTop:8 }}>Try a different category or search term</p>
           </div>
         ) : (
-          /* ── GRID: 2 cols on mobile, auto-fill on larger ── */
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(2, 1fr)', gap:12 }}
-            className="products-grid">
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(2, 1fr)', gap:12 }} className="products-grid">
             <style>{`@media(min-width:600px){.products-grid{grid-template-columns:repeat(auto-fill,minmax(200px,1fr))!important;gap:20px!important;}}`}</style>
             {products.map((p,i) => (
               <motion.div key={p.id} initial={{opacity:0,y:20}} animate={{opacity:1,y:0}} transition={{delay:Math.min(i*.04,.6)}}
@@ -1202,7 +1268,6 @@ function ProfileView({ user, onProduct, onLogout, T }:{ user:AppUser; onProduct:
 
       {isSeller && (
         <>
-          {/* Stats — product count and sellers only */}
           <div className="stats-grid" style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:14, marginBottom:28 }}>
             {[['Items Listed',myProducts.length,'📦'],['My Shop',user.name,'🏪']].map(([l,v,e]) => (
               <div key={String(l)} style={{ background:T.white, borderRadius:16, padding:'20px 16px', textAlign:'center', boxShadow:`0 2px 10px ${T.shadow}`, border:`1px solid ${T.line}` }}>
@@ -1318,7 +1383,6 @@ function LoginView({ onLogin, T }:{ onLogin:(u:{role:'buyer'|'seller';name:strin
           </p>
         </div>
 
-        {/* ── DEMO ACCOUNT QUICK-LOGIN BUTTONS ── */}
         {!isReg && (
           <div style={{ marginBottom:20 }}>
             <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', fontWeight:700, color:T.inkL, textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:10, textAlign:'center' }}>Quick Access — Demo Accounts</p>
@@ -1425,7 +1489,6 @@ function AdminView({ T, showToast }:{ T:Tokens; showToast:(m:string,t?:'success'
     finally { setDeletingId(null); }
   };
 
-  // Group products by seller
   const sellers: SellerGroup[] = Object.values(
     allProducts.reduce((acc, p) => {
       if (!acc[p.sellerId]) acc[p.sellerId] = { sellerId:p.sellerId, sellerName:p.sellerName, products:[] };
@@ -1439,7 +1502,6 @@ function AdminView({ T, showToast }:{ T:Tokens; showToast:(m:string,t?:'success'
 
   return (
     <div style={{ maxWidth:960, margin:'0 auto' }}>
-      {/* Header */}
       <div style={{ background:`linear-gradient(135deg,#4A1A7A 0%,#2A0A4A 100%)`, borderRadius:20, padding:'28px', marginBottom:24, position:'relative', overflow:'hidden' }}>
         <div style={{ position:'absolute', top:-30, right:-30, width:120, height:120, borderRadius:'50%', background:'rgba(255,255,255,0.05)' }}/>
         <div style={{ position:'relative', zIndex:1 }}>
@@ -1464,7 +1526,6 @@ function AdminView({ T, showToast }:{ T:Tokens; showToast:(m:string,t?:'success'
         </div>
       </div>
 
-      {/* Search seller */}
       <div style={{ position:'relative', marginBottom:20 }}>
         <Search style={{ position:'absolute', left:14, top:'50%', transform:'translateY(-50%)', color:T.inkL }} size={15}/>
         <input type="text" placeholder="Search artisan by name…" value={searchSeller} onChange={e=>setSearchSeller(e.target.value)}
@@ -1481,7 +1542,6 @@ function AdminView({ T, showToast }:{ T:Tokens; showToast:(m:string,t?:'success'
             const isOpen = expandedSeller === seller.sellerId;
             return (
               <div key={seller.sellerId} style={{ background:T.white, borderRadius:16, border:`1px solid ${T.line}`, overflow:'hidden', boxShadow:`0 2px 10px ${T.shadow}` }}>
-                {/* Seller header — click to expand */}
                 <button onClick={()=>setExpandedSeller(isOpen?null:seller.sellerId)}
                   style={{ width:'100%', padding:'16px 20px', background:'none', border:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:14, textAlign:'left' }}>
                   <div style={{ width:44, height:44, borderRadius:'50%', background:'linear-gradient(135deg,#4A1A7A,#7A3AB0)', display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontFamily:'"Playfair Display",serif', fontSize:'1.1rem', fontWeight:700, flexShrink:0 }}>
@@ -1493,15 +1553,12 @@ function AdminView({ T, showToast }:{ T:Tokens; showToast:(m:string,t?:'success'
                   </div>
                   <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                     <div style={{ background:T.forestXL, borderRadius:8, padding:'4px 10px' }}>
-                      <span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.68rem', color:T.forest, fontWeight:600 }}>
-                        {seller.products.length} items
-                      </span>
+                      <span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.68rem', color:T.forest, fontWeight:600 }}>{seller.products.length} items</span>
                     </div>
                     <ChevronRight size={16} color={T.inkL} style={{ transform:isOpen?'rotate(90deg)':'rotate(0deg)', transition:'transform .2s' }}/>
                   </div>
                 </button>
 
-                {/* Products grid — shown when expanded */}
                 <AnimatePresence>
                   {isOpen && (
                     <motion.div initial={{height:0,opacity:0}} animate={{height:'auto',opacity:1}} exit={{height:0,opacity:0}} transition={{duration:.2}}
