@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  Heart, Share2, Star, X, ChevronLeft, ChevronRight,
+  Heart,  Star, X, ChevronLeft, ChevronRight,
   Download, Copy, Check, TrendingUp, Clock, Zap,
   Edit3, BarChart2, Package, AlertTriangle, Users,
-  DollarSign, Flag, Trash2, RefreshCw, Loader2,
-  ArrowRight, MapPin, Phone, Mail, ShoppingBag,
-  Eye, Tag, Bell, Filter, SlidersHorizontal,
+  DollarSign, Flag, Loader2,
+  ArrowRight, MapPin, ShoppingBag,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
