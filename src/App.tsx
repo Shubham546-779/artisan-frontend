@@ -731,13 +731,20 @@ export function App() {
   }, [selectedCat, debSearch, view, showToast]);
 
   const addToCart = useCallback((product:Product, qty:number=1) => {
-    setCart(prev => {
-      const ex=prev.find(i=>i.product.id===product.id);
-      if (ex) return prev.map(i=>i.product.id===product.id?{...i,qty:i.qty+qty}:i);
-      return [...prev,{product,qty}];
-    });
-    showToast(`Added to basket!`);
-  }, [showToast]);
+  // ── REQUIRE LOGIN ──────────────────────────────────────
+  if (!user.role) {
+    showToast('Please sign in to add items to cart', 'error');
+    setView('login');
+    setSelProduct(null);
+    return;
+  }
+  setCart(prev => {
+    const ex=prev.find(i=>i.product.id===product.id);
+    if (ex) return prev.map(i=>i.product.id===product.id?{...i,qty:i.qty+qty}:i);
+    return [...prev,{product,qty}];
+  });
+  showToast(`Added to basket!`);
+}, [showToast, user.role]);
 
   const updateCartQty  = useCallback((id:string,qty:number)=>setCart(p=>p.map(i=>i.product.id===id?{...i,qty}:i)),[]);
   const removeFromCart = useCallback((id:string)=>setCart(p=>p.filter(i=>i.product.id!==id)),[]);
@@ -748,14 +755,21 @@ export function App() {
     window.scrollTo({top:0,behavior:'smooth'});
   }, [view, prevView]);
 
-  const nav = useCallback((v:NavName) => {
-    if (v==='sell') {
-      if (!user.role) { setView('login'); setSelProduct(null); return; }
-      if (user.role!=='seller') { setShowShopModal(true); return; }
-    }
-    if (v==='profile'&&!user.role) { setView('login'); setSelProduct(null); return; }
-    setView(v); setSelProduct(null);
-  }, [user.role]);
+ const nav = useCallback((v:NavName) => {
+  if (v==='sell') {
+    if (!user.role) { setView('login'); setSelProduct(null); return; }
+    if (user.role!=='seller') { setShowShopModal(true); return; }
+  }
+  if (v==='profile' && !user.role) { setView('login'); setSelProduct(null); return; }
+  // ── BLOCK CART if not logged in ──────────────────────
+  if (v==='cart' && !user.role) { 
+    showToast('Please sign in to view your cart', 'error');
+    setView('login'); 
+    setSelProduct(null); 
+    return; 
+  }
+  setView(v); setSelProduct(null);
+}, [user.role, showToast]);
 
   const handleLogout = useCallback(() => {
     api.auth.logout(); setUser({role:null,name:'',id:''});
@@ -766,10 +780,7 @@ export function App() {
     setUser(u); setView('home'); setSelProduct(null); showToast(`Welcome, ${u.name}!`);
   }, [showToast]);
 
-  // ── FIXED handleShopConfirm ────────────────────────────
-  // After updating the role on the backend we need a FRESH JWT
-  // that encodes role=seller. We show a small re-login modal
-  // so the user enters their password once more and gets a new token.
+  
   const handleShopConfirm = useCallback(async (shopName: string) => {
     setShowShopModal(false);
     try {
@@ -947,7 +958,19 @@ export function App() {
           ]).map(({v,icon,label}) => {
             const active = view===v||(view==='product'&&v==='home')||(showShopModal&&v==='sell');
             return (
-              <button key={v} onClick={()=>v==='cart'?setCartOpen(true):nav(v)}
+              <button key={v} onClick={()=>{
+  if (v==='cart') {
+    if (!user.role) {
+      showToast('Please sign in to view your cart', 'error');
+      setView('login');
+      setSelProduct(null);
+    } else {
+      setCartOpen(true);
+    }
+  } else {
+    nav(v);
+  }
+}}
                 style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:3, padding:'6px 16px', background:'none', border:'none', color:active?(v==='admin'?'#7A3D9A':T.forest):T.inkL, cursor:'pointer', position:'relative', transition:'color .15s' }}>
                 <div style={{ padding:'4px 10px', borderRadius:10, background:active?(v==='admin'?'#EDE0F5':T.forestXL):'transparent', transition:'background .15s' }}>
                   {React.cloneElement(icon as React.ReactElement<{strokeWidth:number}>, {strokeWidth:active?2.5:1.8})}
