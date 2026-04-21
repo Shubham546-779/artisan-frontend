@@ -1,18 +1,23 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
   <head>
-    <link rel="icon" href="data:,">
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Artisan Bazaar</title>
-    <style>
-      body {
-        margin: 0;
-        padding: 0;
-        background-color: #4a5e3a;
-      }
-      #root { background-color: #f5edd6; }
-    </style>
+
+    <!-- EmailJS CDN — REQUIRED for order confirmation emails -->
+    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+    <script>
+      window.addEventListener('load', function() {
+        if (window.emailjs) {
+          emailjs.init('gmhrNm1DKu9SF_J_y');
+          console.log('EmailJS loaded ✓');
+        } else {
+          console.error('EmailJS failed to load!');
+        }
+      });
+    </script>
+
   </head>
   <body>
     <div id="root"></div>
