@@ -1,1433 +1,319 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  Heart,  Star, X, ChevronLeft, ChevronRight,
-  Download, Copy, Check, TrendingUp, Clock, Zap,
-  Edit3, BarChart2, Package, AlertTriangle, Users,
-  DollarSign, Flag, Loader2,
-  ArrowRight, MapPin, ShoppingBag,
-  SlidersHorizontal,
+  Search, Star, ChevronLeft, ChevronRight, ShoppingCart, Shield,
+  Truck, RefreshCw, Package, MapPin, Clock, Award, ArrowRight,
+  Trash2, Plus, Minus, Home, PlusCircle, User, Store, Leaf,
+  Sprout, Loader2, AlertCircle, X, Heart, Filter, TrendingUp, Moon, Sun,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { api, tokenStore, ApiError } from './api/api';
+import type { Product, Category, Review, ReviewsResponse, ProductDetail } from './api/api';
 
-// ── Token type ─────────────────────────────────────────────
-export type Tokens = Record<string, string>;
+// ── DESIGN TOKENS ──────────────────────────────────────────
+const makeTokens = (dark: boolean) => ({
+  white:    dark ? '#1A1A1A' : '#FFFFFF',
+  offwhite: dark ? '#141414' : '#FAFAF8',
+  paper:    dark ? '#242424' : '#F5F2ED',
+  paperD:   dark ? '#2E2E2E' : '#EDE8E0',
+  line:     dark ? '#333333' : '#E2DDD5',
+  lineD:    dark ? '#444444' : '#C8C0B4',
+  ink:      dark ? '#F0EDE8' : '#1C1410',
+  inkM:     dark ? '#C8BFB5' : '#4A3F35',
+  inkL:     dark ? '#8A8078' : '#7A6E64',
+  forest:   dark ? '#4A7A4A' : '#2D4A2D',
+  forestM:  dark ? '#5A9A5A' : '#3D6B3D',
+  forestL:  dark ? '#6AAA6A' : '#5A8A5A',
+  forestXL: dark ? '#1E3A1E' : '#C8DCC8',
+  earth:    dark ? '#8B6340' : '#6B4C2A',
+  earthM:   dark ? '#A07850' : '#8B6340',
+  earthL:   dark ? '#C8A07A' : '#B8956A',
+  earthXL:  dark ? '#2A1E10' : '#F0E8D8',
+  gold:     '#C9A84C',
+  goldL:    '#E8D08A',
+  rust:     dark ? '#CC5544' : '#9B3D2A',
+  sage:     dark ? '#7A9F7A' : '#8FAF8F',
+  shadow:   dark ? 'rgba(0,0,0,0.3)' : 'rgba(28,20,16,0.08)',
+  shadowM:  dark ? 'rgba(0,0,0,0.5)' : 'rgba(28,20,16,0.14)',
+  shadowL:  dark ? 'rgba(0,0,0,0.7)' : 'rgba(28,20,16,0.22)',
+});
 
-// ─────────────────────────────────────────────────────────────────
-//  TYPES  (defined FIRST so hooks can reference them)
-// ─────────────────────────────────────────────────────────────────
+type Tokens = ReturnType<typeof makeTokens>;
 
-export interface Order {
-  id: string;
-  date: string;
-  items: {
-    name: string;
-    imageUrl: string;
-    price: number;
-    qty: number;
-    sellerName: string;
-  }[];
-  total: number;
-  status: 'pending' | 'confirmed' | 'shipped' | 'delivered' | 'cancelled';
-  address: string;
-  paymentMethod: 'razorpay' | 'cod';
-  coupon?: string;
-  discount?: number;
-}
+const CATEGORIES: Category[] = ['Jewelry','Home Decor','Clothing','Art','Toys','Gifts','Other'];
 
-export interface Product {
-  id: string;
+const CAT_META: Record<string, { emoji:string; label:string; color:string; bg:string }> = {
+  All:          { emoji:'🌿', label:'All',        color:'#3D6B3D', bg:'#E8F0E8' },
+  Jewelry:      { emoji:'💎', label:'Jewelry',    color:'#7A5830', bg:'#F8F0E0' },
+  'Home Decor': { emoji:'🪵', label:'Home',       color:'#6B3D20', bg:'#F5EDE0' },
+  Clothing:     { emoji:'🌾', label:'Clothing',   color:'#3D5830', bg:'#E8F0E0' },
+  Art:          { emoji:'🎨', label:'Art',        color:'#7A3020', bg:'#F5E8E0' },
+  Toys:         { emoji:'🌲', label:'Toys',       color:'#2D5820', bg:'#E0F0E0' },
+  Gifts:        { emoji:'🌸', label:'Gifts',      color:'#7A3050', bg:'#F5E0E8' },
+  Other:        { emoji:'🍃', label:'More',       color:'#3D5840', bg:'#E0EDE8' },
+};
+
+interface CartItem { product: Product; qty: number; }
+type ViewName = 'home'|'sell'|'profile'|'product'|'login'|'admin';
+type NavName  = 'home'|'sell'|'profile'|'login'|'admin';
+
+// ── UPDATED: added email + _loginEmail for re-auth ─────────
+interface AppUser {
+  role: 'buyer'|'seller'|null;
   name: string;
-  imageUrl: string;
-  price: number;
-  sellerName: string;
-  sellerId: string;
-  category: string;
-  description?: string;
-  rating?: number;
-  stock?: number;
-  createdAt?: string;
+  id: string;
+  email?: string;
 }
 
-export interface FilterState {
-  minPrice: number;
-  maxPrice: number;
-  minRating: number;
-  sort: 'newest' | 'oldest' | 'price_asc' | 'price_desc' | 'rating';
-}
+// ── DEVELOPER ID ───────────────────────────────────────────
+const DEV_EMAIL = 'shubhamvairagl0@gmail.com';
 
-// ─────────────────────────────────────────────────────────────────
-//  HOOKS
-// ─────────────────────────────────────────────────────────────────
+// ── HELPERS ────────────────────────────────────────────────
+const clamp = (n:number): React.CSSProperties => ({
+  display:'-webkit-box' as React.CSSProperties['display'],
+  WebkitLineClamp:n,
+  WebkitBoxOrient:'vertical' as unknown as React.CSSProperties['WebkitBoxOrient'],
+  overflow:'hidden',
+});
 
-/** Persisted wishlist hook */
-export function useWishlist() {
-  const [ids, setIds] = useState<Set<string>>(() => {
-    try {
-      return new Set(JSON.parse(localStorage.getItem('ab_wishlist') || '[]') as string[]);
-    } catch { return new Set(); }
-  });
-
-  useEffect(() => {
-    try { localStorage.setItem('ab_wishlist', JSON.stringify([...ids])); } catch {}
-  }, [ids]);
-
-  const toggle = useCallback((id: string) => {
-    setIds(prev => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  }, []);
-
-  const has = useCallback((id: string) => ids.has(id), [ids]);
-  return { ids, toggle, has };
-}
-
-/** Recently-viewed products (last 10) */
-export function useRecentlyViewed() {
-  const [items, setItems] = useState<Product[]>(() => {
-    try {
-      return JSON.parse(localStorage.getItem('ab_recent') || '[]') as Product[];
-    } catch { return []; }
-  });
-
-  const push = useCallback((product: Product) => {
-    setItems(prev => {
-      const next = [product, ...prev.filter(p => p.id !== product.id)].slice(0, 10);
-      try { localStorage.setItem('ab_recent', JSON.stringify(next)); } catch {}
-      return next;
-    });
-  }, []);
-
-  return { items, push };
-}
-
-/** Local order history (persisted) */
-export function useOrders() {
-  const [orders, setOrders] = useState<Order[]>(() => {
-    try {
-      return JSON.parse(localStorage.getItem('ab_orders') || '[]') as Order[];
-    } catch { return []; }
-  });
-
-  const addOrder = useCallback((order: Order) => {
-    setOrders(prev => {
-      const next = [order, ...prev];
-      try { localStorage.setItem('ab_orders', JSON.stringify(next)); } catch {}
-      return next;
-    });
-  }, []);
-
-  return { orders, addOrder };
-}
-
-// ─────────────────────────────────────────────────────────────────
-//  SKELETON CARD
-// ─────────────────────────────────────────────────────────────────
-
-export function SkeletonCard({ T }: { T: Tokens }) {
+// ── SPINNER ────────────────────────────────────────────────
+function Spinner({ label='Loading…', T }:{ label?:string; T:Tokens }) {
   return (
-    <div style={{
-      background: T.white, borderRadius: 14, overflow: 'hidden',
-      border: `1px solid ${T.line}`, boxShadow: `0 2px 10px ${T.shadow}`,
-    }}>
-      <style>{`
-        @keyframes ab-shimmer {
-          0%   { background-position: -400px 0 }
-          100% { background-position:  400px 0 }
-        }
-        .ab-sk {
-          animation: ab-shimmer 1.4s ease infinite;
-          background: linear-gradient(90deg, ${T.paper} 25%, ${T.paperD} 50%, ${T.paper} 75%);
-          background-size: 800px 100%;
-        }
-      `}</style>
-      <div className="ab-sk" style={{ aspectRatio: '1', width: '100%' }}/>
-      <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <div className="ab-sk" style={{ height: 14, borderRadius: 6, width: '80%' }}/>
-        <div className="ab-sk" style={{ height: 11, borderRadius: 6, width: '55%' }}/>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
-          <div className="ab-sk" style={{ height: 16, borderRadius: 6, width: '30%' }}/>
-          <div className="ab-sk" style={{ height: 28, borderRadius: 7, width: '30%' }}/>
-        </div>
-      </div>
+    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'80px 20px', gap:16 }}>
+      <div style={{ width:40, height:40, border:`3px solid ${T.forestXL}`, borderTopColor:T.forest, borderRadius:'50%', animation:'spin 0.8s linear infinite' }}/>
+      <p style={{ fontFamily:'"Crimson Pro",serif', fontStyle:'italic', color:T.inkL, fontSize:'1rem' }}>{label}</p>
     </div>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────
-//  WISHLIST BUTTON
-// ─────────────────────────────────────────────────────────────────
-
-export function WishlistButton({
-  productId, T, wishlist, size = 16,
-}: {
-  productId: string;
-  T: Tokens;
-  wishlist: ReturnType<typeof useWishlist>;
-  size?: number;
-}) {
-  const liked = wishlist.has(productId);
+// ── TOAST ──────────────────────────────────────────────────
+function Toast({ msg, type, onClose }:{ msg:string; type:'success'|'error'; onClose:()=>void }) {
+  useEffect(() => { const t=setTimeout(onClose,3000); return ()=>clearTimeout(t); },[onClose]);
   return (
-    <button
-      onClick={e => { e.stopPropagation(); wishlist.toggle(productId); }}
-      style={{
-        background: liked ? '#FFF0EE' : 'rgba(255,255,255,0.9)',
-        border: `1.5px solid ${liked ? T.rust : 'rgba(0,0,0,0.08)'}`,
-        borderRadius: '50%',
-        width: size + 16, height: size + 16,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        cursor: 'pointer', transition: 'all .2s', backdropFilter: 'blur(4px)',
-      }}
-    >
-      <Heart
-        size={size}
-        fill={liked ? T.rust : 'none'}
-        color={liked ? T.rust : T.inkL}
-        strokeWidth={liked ? 2 : 1.5}
-      />
-    </button>
+    <motion.div initial={{ opacity:0, y:50, x:'-50%' }} animate={{ opacity:1, y:0, x:'-50%' }} exit={{ opacity:0, y:50, x:'-50%' }}
+      style={{ position:'fixed', bottom:'5.5rem', left:'50%', zIndex:9999, background:type==='error'?'#9B3D2A':'#2D4A2D',
+        color:'#fff', padding:'12px 20px', borderRadius:8, fontSize:'0.82rem', fontFamily:'"Inter",sans-serif',
+        boxShadow:'0 8px 32px rgba(0,0,0,0.3)', display:'flex', alignItems:'center', gap:8, whiteSpace:'nowrap',
+        maxWidth:'90vw', fontWeight:500 }}>
+      {type==='error' ? <AlertCircle size={15}/> : '✓'} {msg}
+    </motion.div>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────
-//  WISHLIST DRAWER
-// ─────────────────────────────────────────────────────────────────
-
-export function WishlistDrawer({
-  ids, allProducts, T, onClose, onProduct, onAddToCart,
-}: {
-  ids: Set<string>;
-  allProducts: Product[];
-  T: Tokens;
-  onClose: () => void;
-  onProduct: (p: Product) => void;
-  onAddToCart: (p: Product) => void;
-}) {
-  const items = allProducts.filter(p => ids.has(p.id));
+// ── CART DRAWER ────────────────────────────────────────────
+function CartDrawer({ cart, onClose, onUpdateQty, onRemove, onClearCart, showToast, T, onBrowseWares }:
+  { cart:CartItem[]; onClose:()=>void; onUpdateQty:(id:string,qty:number)=>void;
+    onRemove:(id:string)=>void; onClearCart:()=>void; showToast:(m:string,t?:'success'|'error')=>void; T:Tokens; onBrowseWares:()=>void }) {
+  const total = cart.reduce((s,i) => s+i.product.price*i.qty, 0);
+  const [showOrderForm, setShowOrderForm] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [successData, setSuccessData] = useState({ orderId:'', email:'' });
 
   return (
     <>
-      <motion.div
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-        style={{
-          position: 'fixed', inset: 0, zIndex: 500,
-          background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)',
-        }}
+      <motion.div initial={{ opacity:0 }} animate={{ opacity:1 }} exit={{ opacity:0 }}
+        style={{ position:'fixed', inset:0, zIndex:500, background:'rgba(0,0,0,0.4)', backdropFilter:'blur(4px)' }}
         onClick={onClose}>
-        <motion.div
-          initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
-          transition={{ type: 'spring', damping: 28, stiffness: 280 }}
-          onClick={e => e.stopPropagation()}
-          style={{
-            position: 'absolute', top: 0, right: 0, bottom: 0,
-            width: 'min(400px,100vw)', background: T.white,
-            display: 'flex', flexDirection: 'column',
-            boxShadow: `-12px 0 48px ${T.shadowL}`,
-          }}>
-
-          {/* Header */}
-          <div style={{
-            padding: '20px 24px', borderBottom: `1px solid ${T.line}`,
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            marginTop: 'env(safe-area-inset-top)',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ background: T.rust, borderRadius: 8, padding: 8, display: 'flex' }}>
-                <Heart size={16} color="#fff" fill="#fff"/>
+        <motion.div initial={{ x:'100%' }} animate={{ x:0 }} exit={{ x:'100%' }} transition={{ type:'spring', damping:28, stiffness:280 }}
+          onClick={e=>e.stopPropagation()}
+          style={{ position:'absolute', top:0, right:0, bottom:0, width:'min(440px,100vw)', background:T.white,
+            display:'flex', flexDirection:'column', boxShadow:`-12px 0 48px ${T.shadowL}` }}>
+          <div style={{ padding:'20px 24px', borderBottom:`1px solid ${T.line}`, display:'flex', alignItems:'center',
+            justifyContent:'space-between', background:T.white, marginTop:'env(safe-area-inset-top)' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+              <div style={{ background:T.forest, borderRadius:8, padding:'8px', display:'flex' }}>
+                <ShoppingCart size={18} color="#fff"/>
               </div>
               <div>
-                <h2 style={{ fontFamily: '"Playfair Display",serif', fontSize: '1.1rem', fontWeight: 700, color: T.ink, margin: 0 }}>Saved Items</h2>
-                <p style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.72rem', color: T.inkL, margin: 0 }}>
-                  {items.length} item{items.length !== 1 ? 's' : ''}
-                </p>
+                <h2 style={{ fontFamily:'"Playfair Display",serif', fontSize:'1.1rem', fontWeight:700, color:T.ink, margin:0 }}>Your Basket</h2>
+                <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', color:T.inkL, margin:0 }}>{cart.length} item{cart.length!==1?'s':''}</p>
               </div>
             </div>
-            <button
-              onClick={onClose}
-              style={{ background: T.paper, border: 'none', borderRadius: 8, width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: T.inkM }}>
-              <X size={18}/>
+            <button onClick={onClose} style={{ background:T.paper, border:'none', borderRadius:8, width:36, height:36, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', color:T.inkM }}>
+              <ChevronLeft size={18}/>
             </button>
           </div>
 
-          {/* Body */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
-            {items.length === 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 16, padding: '60px 20px' }}>
-                <Heart size={48} color={T.lineD}/>
-                <p style={{ fontFamily: '"Playfair Display",serif', fontSize: '1.1rem', color: T.inkM, fontStyle: 'italic', textAlign: 'center' }}>No saved items yet</p>
-                <p style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.82rem', color: T.inkL, textAlign: 'center' }}>Tap the ♥ on any product to save it here</p>
+          <div style={{ flex:1, overflowY:'auto', padding:'16px' }}>
+            {cart.length===0 ? (
+              <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'100%', gap:16, padding:'60px 20px' }}>
+                <div style={{ width:80, height:80, background:T.paper, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                  <ShoppingCart size={36} color={T.lineD}/>
+                </div>
+                <p style={{ fontFamily:'"Playfair Display",serif', fontSize:'1.1rem', color:T.inkM, fontStyle:'italic', textAlign:'center' }}>Your basket is empty</p>
+                <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', color:T.inkL, textAlign:'center' }}>Discover handcrafted wares and add them here</p>
+                <button onClick={onBrowseWares} style={{ padding:'10px 24px', background:T.forest, color:'#fff', border:'none', borderRadius:8, fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', fontWeight:600, cursor:'pointer', display:'flex', alignItems:'center', gap:6 }}>Browse Wares <ArrowRight size={14}/></button>
               </div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {items.map(p => (
-                  <div
-                    key={p.id}
-                    style={{ background: T.offwhite, borderRadius: 12, padding: 12, display: 'flex', gap: 12, alignItems: 'center', border: `1px solid ${T.line}`, cursor: 'pointer' }}
-                    onClick={() => { onProduct(p); onClose(); }}>
-                    <img src={p.imageUrl} alt={p.name} style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 8, flexShrink: 0 }}/>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ fontFamily: '"Playfair Display",serif', fontStyle: 'italic', fontSize: '0.88rem', color: T.ink, margin: '0 0 2px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{p.name}</p>
-                      <p style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.72rem', color: T.inkL, margin: '0 0 6px' }}>{p.sellerName}</p>
-                      <p style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.9rem', fontWeight: 700, color: T.forest, margin: 0 }}>₹{p.price}</p>
+              <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+                {cart.map(item => (
+                  <div key={item.product.id} style={{ background:T.offwhite, borderRadius:12, padding:'12px', display:'flex', gap:12, alignItems:'center', border:`1px solid ${T.line}` }}>
+                    <img src={item.product.imageUrl} alt={item.product.name} style={{ width:72, height:72, objectFit:'cover', borderRadius:8, flexShrink:0 }}/>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <p style={{ fontFamily:'"Playfair Display",serif', fontStyle:'italic', fontSize:'0.9rem', color:T.ink, lineHeight:1.3, ...clamp(2), margin:'0 0 2px' }}>{item.product.name}</p>
+                      <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', color:T.inkL, margin:'0 0 8px' }}>{item.product.sellerName}</p>
+                      <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.9rem', fontWeight:700, color:T.forest, margin:0 }}>₹{(item.product.price*item.qty).toFixed(2)}</p>
                     </div>
-                    <button
-                      onClick={e => { e.stopPropagation(); onAddToCart(p); }}
-                      style={{ padding: '8px 12px', background: T.forest, color: '#fff', border: 'none', borderRadius: 8, fontFamily: '"Inter",sans-serif', fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>
-                      Add
-                    </button>
+                    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:8 }}>
+                      <div style={{ display:'flex', alignItems:'center', background:T.paper, borderRadius:8, overflow:'hidden', border:`1px solid ${T.line}` }}>
+                        <button onClick={()=>item.qty>1?onUpdateQty(item.product.id,item.qty-1):onRemove(item.product.id)}
+                          style={{ width:30, height:30, border:'none', background:'transparent', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:T.inkM }}><Minus size={12}/></button>
+                        <span style={{ width:28, textAlign:'center', fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', fontWeight:600, color:T.ink }}>{item.qty}</span>
+                        <button onClick={()=>onUpdateQty(item.product.id,item.qty+1)}
+                          style={{ width:30, height:30, border:'none', background:'transparent', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:T.inkM }}><Plus size={12}/></button>
+                      </div>
+                      <button onClick={()=>onRemove(item.product.id)} style={{ background:'none', border:'none', cursor:'pointer', color:T.rust, padding:4 }}><Trash2 size={14}/></button>
+                    </div>
                   </div>
                 ))}
               </div>
             )}
           </div>
+
+          {cart.length>0 && (
+            <div style={{ padding:'20px 24px', borderTop:`1px solid ${T.line}`, background:T.white }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
+                <span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', color:T.inkL, fontWeight:500 }}>Total Amount</span>
+                <span style={{ fontFamily:'"Playfair Display",serif', fontSize:'1.4rem', fontWeight:700, color:T.ink }}>₹{total.toFixed(2)}</span>
+              </div>
+              <button onClick={()=>setShowOrderForm(true)}
+                style={{ width:'100%', padding:'14px', background:T.forest, color:'#fff', border:'none', borderRadius:10, fontFamily:'"Inter",sans-serif', fontSize:'0.88rem', fontWeight:600, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+                Proceed to Checkout <ArrowRight size={16}/>
+              </button>
+              <p style={{ textAlign:'center', fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', color:T.inkL, marginTop:10 }}>
+                🚚 Free delivery on orders above ₹50
+              </p>
+            </div>
+          )}
         </motion.div>
       </motion.div>
+
+      <AnimatePresence>
+        {showOrderForm && (
+          <OrderFormModal cart={cart} onClose={()=>setShowOrderForm(false)} T={T}
+            onSuccess={()=>{
+              const oid=`AB-${Date.now().toString(36).toUpperCase()}`;
+              setSuccessData({orderId:oid,email:''});
+              setShowOrderForm(false); setShowSuccess(true); onClearCart();
+            }}/>
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {showSuccess && (
+          <OrderSuccessModal orderId={successData.orderId} email={successData.email} T={T}
+            onClose={()=>{ setShowSuccess(false); onClose(); }}/>
+        )}
+      </AnimatePresence>
     </>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────
-//  FILTER BAR
-// ─────────────────────────────────────────────────────────────────
+// ── ORDER FORM MODAL ───────────────────────────────────────
+interface OrderForm { name:string; email:string; mobile:string; address:string; city:string; pincode:string; }
 
-export const DEFAULT_FILTERS: FilterState = {
-  minPrice: 0, maxPrice: 100000, minRating: 0, sort: 'newest',
-};
+function OrderFormModal({ cart, onClose, onSuccess, T }:{ cart:CartItem[]; onClose:()=>void; onSuccess:()=>void; T:Tokens }) {
+  const total = cart.reduce((s,i) => s+i.product.price*i.qty, 0);
+  const [form, setForm] = useState<OrderForm>({name:'',email:'',mobile:'',address:'',city:'',pincode:''});
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState('');
+  const orderId = `AB-${Date.now().toString(36).toUpperCase()}`;
 
-// ✅ FIX 1: Moved sort options OUTSIDE JSX — was causing broken .map() call
-const SORT_OPTIONS = [
-  ['newest',     'Newest'    ],
-  ['oldest',     'Oldest'    ],
-  ['price_asc',  'Price ↑'   ],
-  ['price_desc', 'Price ↓'   ],
-  ['rating',     'Top Rated' ],
-] as const;
+  const inp:React.CSSProperties = { width:'100%', marginTop:6, padding:'11px 14px', background:T.offwhite,
+    border:`1.5px solid ${T.line}`, borderRadius:8, fontSize:'0.9rem', outline:'none', color:T.ink,
+    fontFamily:'"Inter",sans-serif', transition:'border-color .2s' };
+  const lbl:React.CSSProperties = { fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', fontWeight:600,
+    textTransform:'uppercase', letterSpacing:'0.08em', color:T.inkL };
 
-export function FilterBar({
-  filters, onChange, T,
-}: {
-  filters: FilterState;
-  onChange: (f: FilterState) => void;
-  T: Tokens;
-}) {
-  const [open, setOpen] = useState(false);
-  const active =
-    filters.minPrice > 0 ||
-    filters.maxPrice < 100000 ||
-    filters.minRating > 0 ||
-    filters.sort !== 'newest';
-
-  return (
-    <div style={{ position: 'relative' }}>
-      <button
-        onClick={() => setOpen(o => !o)}
-        style={{
-          display: 'flex', alignItems: 'center', gap: 6,
-          padding: '8px 14px',
-          background: active ? T.forestXL : T.paper,
-          border: `1.5px solid ${active ? T.forest : T.line}`,
-          borderRadius: 100,
-          fontFamily: '"Inter",sans-serif', fontSize: '0.78rem',
-          fontWeight: active ? 600 : 400,
-          color: active ? T.forest : T.inkL,
-          cursor: 'pointer', transition: 'all .15s', whiteSpace: 'nowrap',
-        }}>
-        <SlidersHorizontal size={13}/>
-        Filter{active ? ' ●' : ''}
-      </button>
-
-      <AnimatePresence>
-        {open && (
-          <>
-            {/* Backdrop */}
-            <motion.div
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              style={{ position: 'fixed', inset: 0, zIndex: 200 }}
-              onClick={() => setOpen(false)}/>
-
-            {/* Panel */}
-            <motion.div
-              initial={{ opacity: 0, y: 8, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 8, scale: 0.95 }}
-              style={{
-                position: 'absolute', top: '110%', left: 0, zIndex: 201,
-                background: T.white, borderRadius: 16, padding: 20, width: 280,
-                boxShadow: `0 8px 40px ${T.shadowM}`, border: `1px solid ${T.line}`,
-              }}>
-
-              {/* ── Sort ── */}
-              <div style={{ marginBottom: 18 }}>
-                <p style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.7rem', fontWeight: 600, color: T.inkL, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
-                  Sort By
-                </p>
-                {/* ✅ FIX 1: array defined outside, .map() called cleanly */}
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  {SORT_OPTIONS.map(([val, label]) => (
-                    <button
-                      key={val}
-                      onClick={() => onChange({ ...filters, sort: val })}
-                      style={{
-                        padding: '5px 10px', borderRadius: 100,
-                        border: `1.5px solid ${filters.sort === val ? T.forest : T.line}`,
-                        background: filters.sort === val ? T.forestXL : T.paper,
-                        color: filters.sort === val ? T.forest : T.inkL,
-                        fontFamily: '"Inter",sans-serif', fontSize: '0.72rem',
-                        fontWeight: filters.sort === val ? 600 : 400,
-                        cursor: 'pointer',
-                      }}>
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* ── Price ── */}
-              <div style={{ marginBottom: 18 }}>
-                <p style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.7rem', fontWeight: 600, color: T.inkL, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
-                  Price Range — ₹{filters.minPrice} – ₹{filters.maxPrice >= 100000 ? '∞' : filters.maxPrice}
-                </p>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <input
-                    type="number" placeholder="Min"
-                    value={filters.minPrice || ''}
-                    onChange={e => onChange({ ...filters, minPrice: Number(e.target.value) || 0 })}
-                    style={{ flex: 1, padding: '8px 10px', background: T.offwhite, border: `1px solid ${T.line}`, borderRadius: 8, fontSize: '0.82rem', color: T.ink, fontFamily: '"Inter",sans-serif', outline: 'none' }}/>
-                  <input
-                    type="number" placeholder="Max"
-                    value={filters.maxPrice >= 100000 ? '' : filters.maxPrice}
-                    onChange={e => onChange({ ...filters, maxPrice: Number(e.target.value) || 100000 })}
-                    style={{ flex: 1, padding: '8px 10px', background: T.offwhite, border: `1px solid ${T.line}`, borderRadius: 8, fontSize: '0.82rem', color: T.ink, fontFamily: '"Inter",sans-serif', outline: 'none' }}/>
-                </div>
-              </div>
-
-              {/* ── Rating ── */}
-              <div style={{ marginBottom: 18 }}>
-                <p style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.7rem', fontWeight: 600, color: T.inkL, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
-                  Min Rating
-                </p>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  {[0, 3, 3.5, 4, 4.5].map(r => (
-                    <button
-                      key={r}
-                      onClick={() => onChange({ ...filters, minRating: r })}
-                      style={{
-                        padding: '5px 10px', borderRadius: 100,
-                        border: `1.5px solid ${filters.minRating === r ? '#C9A84C' : T.line}`,
-                        background: filters.minRating === r ? '#FFF8E0' : T.paper,
-                        color: filters.minRating === r ? '#A07820' : T.inkL,
-                        fontFamily: '"Inter",sans-serif', fontSize: '0.72rem',
-                        fontWeight: filters.minRating === r ? 600 : 400,
-                        cursor: 'pointer',
-                      }}>
-                      {r === 0 ? 'Any' : `${r}★`}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* ── Actions ── */}
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button
-                  onClick={() => { onChange(DEFAULT_FILTERS); setOpen(false); }}
-                  style={{ flex: 1, padding: '9px', background: T.paper, color: T.inkL, border: `1px solid ${T.line}`, borderRadius: 8, fontFamily: '"Inter",sans-serif', fontSize: '0.78rem', cursor: 'pointer' }}>
-                  Reset
-                </button>
-                <button
-                  onClick={() => setOpen(false)}
-                  style={{ flex: 1, padding: '9px', background: T.forest, color: '#fff', border: 'none', borderRadius: 8, fontFamily: '"Inter",sans-serif', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer' }}>
-                  Apply
-                </button>
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-/** Apply filter state to a product array client-side */
-export function applyFilters(products: Product[], f: FilterState): Product[] {
-  return products
-    .filter(p => p.price >= f.minPrice && p.price <= f.maxPrice)
-    .filter(p => (p.rating ?? 0) >= f.minRating)
-    .sort((a, b) => {
-      if (f.sort === 'price_asc')  return a.price - b.price;
-      if (f.sort === 'price_desc') return b.price - a.price;
-      if (f.sort === 'rating')     return (b.rating ?? 0) - (a.rating ?? 0);
-      if (f.sort === 'oldest')     return new Date(a.createdAt ?? 0).getTime() - new Date(b.createdAt ?? 0).getTime();
-      return new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime();
-    });
-}
-
-// ─────────────────────────────────────────────────────────────────
-//  PRODUCT IMAGE GALLERY
-// ─────────────────────────────────────────────────────────────────
-
-export function ProductImageGallery({ images, T }: { images: string[]; T: Tokens }) {
-  const [idx,    setIdx]    = useState(0);
-  const [zoomed, setZoomed] = useState(false);
-  const touchStart = useRef(0);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowLeft')  setIdx(i => Math.max(0, i - 1));
-      if (e.key === 'ArrowRight') setIdx(i => Math.min(images.length - 1, i + 1));
-      if (e.key === 'Escape')     setZoomed(false);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [images.length]);
-
-  if (!images.length) return null;
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      {/* Main image */}
-      <div
-        style={{ position: 'relative', borderRadius: 16, overflow: 'hidden', background: T.paper, cursor: 'zoom-in' }}
-        onTouchStart={e => { touchStart.current = e.touches[0].clientX; }}
-        onTouchEnd={e => {
-          const dx = e.changedTouches[0].clientX - touchStart.current;
-          if (dx >  50 && idx > 0)                  setIdx(i => i - 1);
-          if (dx < -50 && idx < images.length - 1)  setIdx(i => i + 1);
-        }}
-        onClick={() => setZoomed(true)}>
-        <img src={images[idx]} alt="" style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', display: 'block', transition: 'opacity .2s' }}/>
-
-        {images.length > 1 && (
-          <>
-            {idx > 0 && (
-              <button
-                onClick={e => { e.stopPropagation(); setIdx(i => i - 1); }}
-                style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.9)', border: 'none', borderRadius: '50%', width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>
-                <ChevronLeft size={16} color={T.inkM}/>
-              </button>
-            )}
-            {idx < images.length - 1 && (
-              <button
-                onClick={e => { e.stopPropagation(); setIdx(i => i + 1); }}
-                style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.9)', border: 'none', borderRadius: '50%', width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>
-                <ChevronRight size={16} color={T.inkM}/>
-              </button>
-            )}
-            <div style={{ position: 'absolute', bottom: 10, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 5 }}>
-              {images.map((_, i) => (
-                <div
-                  key={i}
-                  style={{ width: i === idx ? 16 : 6, height: 6, borderRadius: 3, background: i === idx ? '#fff' : 'rgba(255,255,255,0.5)', transition: 'all .2s', cursor: 'pointer' }}
-                  onClick={e => { e.stopPropagation(); setIdx(i); }}/>
-              ))}
-            </div>
-          </>
-        )}
-        <div style={{ position: 'absolute', top: 10, right: 10, background: 'rgba(0,0,0,0.4)', color: '#fff', borderRadius: 6, padding: '3px 8px', fontFamily: '"Inter",sans-serif', fontSize: '0.68rem' }}>
-          🔍 Tap to zoom
-        </div>
-      </div>
-
-      {/* Thumbnails */}
-      {images.length > 1 && (
-        <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
-          {images.map((img, i) => (
-            <img
-              key={i} src={img} alt="" onClick={() => setIdx(i)}
-              style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 8, flexShrink: 0, cursor: 'pointer', border: `2px solid ${i === idx ? T.forest : 'transparent'}`, opacity: i === idx ? 1 : 0.65, transition: 'all .15s' }}/>
-          ))}
-        </div>
-      )}
-
-      {/* Zoom modal */}
-      <AnimatePresence>
-        {zoomed && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            onClick={() => setZoomed(false)}
-            style={{ position: 'fixed', inset: 0, zIndex: 900, background: 'rgba(0,0,0,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'zoom-out' }}>
-            <button
-              onClick={() => setZoomed(false)}
-              style={{ position: 'absolute', top: 20, right: 20, background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: '50%', width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff' }}>
-              <X size={20}/>
-            </button>
-            <motion.img
-              src={images[idx]} alt=""
-              initial={{ scale: 0.85 }} animate={{ scale: 1 }}
-              style={{ maxWidth: '92vw', maxHeight: '88vh', objectFit: 'contain', borderRadius: 8 }}/>
-            {images.length > 1 && (
-              <>
-                {idx > 0 && (
-                  <button
-                    onClick={e => { e.stopPropagation(); setIdx(i => i - 1); }}
-                    style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: '50%', width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff' }}>
-                    <ChevronLeft size={22}/>
-                  </button>
-                )}
-                {idx < images.length - 1 && (
-                  <button
-                    onClick={e => { e.stopPropagation(); setIdx(i => i + 1); }}
-                    style={{ position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: '50%', width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff' }}>
-                    <ChevronRight size={22}/>
-                  </button>
-                )}
-              </>
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────
-//  SHARE PRODUCT SHEET
-// ─────────────────────────────────────────────────────────────────
-
-export function ShareProductSheet({
-  product, T, onClose,
-}: {
-  product: Product;
-  T: Tokens;
-  onClose: () => void;
-}) {
-  const [copied, setCopied] = useState(false);
-  const url  = `${window.location.origin}?product=${product.id}`;
-  const text = `Check out "${product.name}" by ${product.sellerName} on Artisan Bazaar — ₹${product.price}`;
-
-  const copy = () => {
-    navigator.clipboard.writeText(url).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }).catch(() => {});
+  const validate = () => {
+    if (!form.name.trim()) return 'Full name is required';
+    if (!form.email.trim()||!form.email.includes('@')) return 'Valid email is required';
+    if (!form.mobile.trim()||form.mobile.length<10) return 'Valid mobile number is required';
+    if (!form.address.trim()) return 'Address is required';
+    if (!form.city.trim()) return 'City is required';
+    if (!form.pincode.trim()) return 'Pincode is required';
+    return null;
   };
 
-  const wa = () => window.open(`https://wa.me/?text=${encodeURIComponent(text + '\n' + url)}`, '_blank');
-  const ig = () => { copy(); alert('Link copied! Open Instagram and paste it.'); };
-
-  const shareBtns = [
-    { icon: '💬', label: 'WhatsApp',              action: wa,   color: '#25D366', bg: '#E8FBF0' },
-    { icon: '📸', label: 'Instagram',             action: ig,   color: '#E1306C', bg: '#FCE8F0' },
-    { icon: copied ? '✓' : '🔗', label: copied ? 'Copied!' : 'Copy Link', action: copy, color: T.forest, bg: T.forestXL },
-  ];
-
-  return (
-    <motion.div
-      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      style={{ position: 'fixed', inset: 0, zIndex: 700, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
-      onClick={onClose}>
-      <motion.div
-        initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
-        transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-        onClick={e => e.stopPropagation()}
-        style={{ background: T.white, borderRadius: '20px 20px 0 0', width: '100%', maxWidth: 480, padding: '24px 24px 36px', boxShadow: `0 -8px 40px ${T.shadowL}` }}>
-
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-          <h2 style={{ fontFamily: '"Playfair Display",serif', fontSize: '1.1rem', fontWeight: 700, color: T.ink }}>Share This Craft</h2>
-          <button onClick={onClose} style={{ background: T.paper, border: 'none', borderRadius: 8, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-            <X size={16} color={T.inkM}/>
-          </button>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: T.paper, borderRadius: 12, padding: 12, marginBottom: 20 }}>
-          <img src={product.imageUrl} alt="" style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 8, flexShrink: 0 }}/>
-          <div style={{ minWidth: 0 }}>
-            <p style={{ fontFamily: '"Playfair Display",serif', fontStyle: 'italic', fontSize: '0.88rem', color: T.ink, margin: '0 0 2px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{product.name}</p>
-            <p style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.72rem', color: T.inkL, margin: 0 }}>₹{product.price}</p>
-          </div>
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, marginBottom: 20 }}>
-          {shareBtns.map(btn => (
-            <button
-              key={btn.label} onClick={btn.action}
-              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '14px 8px', background: btn.bg, border: 'none', borderRadius: 12, cursor: 'pointer' }}>
-              <span style={{ fontSize: '1.4rem', lineHeight: 1 }}>{btn.icon}</span>
-              <span style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.72rem', fontWeight: 600, color: btn.color }}>{btn.label}</span>
-            </button>
-          ))}
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: T.paper, borderRadius: 10, padding: '10px 14px' }}>
-          <span style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.75rem', color: T.inkL, flex: 1, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{url}</span>
-          <button
-            onClick={copy}
-            style={{ padding: '6px 12px', background: T.forest, color: '#fff', border: 'none', borderRadius: 7, fontFamily: '"Inter",sans-serif', fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4 }}>
-            {copied ? <Check size={12}/> : <Copy size={12}/>} {copied ? 'Copied' : 'Copy'}
-          </button>
-        </div>
-      </motion.div>
-    </motion.div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────
-//  REVIEW SUBMIT MODAL
-// ─────────────────────────────────────────────────────────────────
-
-export function ReviewSubmitModal({
-  productId, productName, T, onClose, onSubmit,
-}: {
-  productId: string;
-  productName: string;
-  T: Tokens;
-  onClose: () => void;
-  onSubmit: (review: { productId: string; rating: number; comment: string }) => Promise<void>;
-}) {
-  const [rating,      setRating]      = useState(5);
-  const [comment,     setComment]     = useState('');
-  const [hoveredStar, setHoveredStar] = useState(0);
-  const [loading,     setLoading]     = useState(false);
-
-  const LABELS = ['', 'Poor', 'Fair', 'Good', 'Great', 'Excellent'];
-
-  const submit = async () => {
-    setLoading(true);
-    try { await onSubmit({ productId, rating, comment }); onClose(); }
-    finally { setLoading(false); }
-  };
-
-  return (
-    <motion.div
-      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      style={{ position: 'fixed', inset: 0, zIndex: 700, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-      <motion.div
-        initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }}
-        style={{ background: T.white, borderRadius: 20, padding: '28px 24px', maxWidth: 400, width: '100%', boxShadow: `0 24px 64px ${T.shadowL}` }}>
-
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-          <h2 style={{ fontFamily: '"Playfair Display",serif', fontSize: '1.2rem', fontWeight: 700, color: T.ink }}>Leave a Review</h2>
-          <button onClick={onClose} style={{ background: T.paper, border: 'none', borderRadius: 8, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-            <X size={16} color={T.inkM}/>
-          </button>
-        </div>
-
-        <p style={{ fontFamily: '"Crimson Pro",serif', fontStyle: 'italic', fontSize: '0.95rem', color: T.inkL, marginBottom: 20 }}>{productName}</p>
-
-        <div style={{ textAlign: 'center', marginBottom: 20 }}>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 8 }}>
-            {[1, 2, 3, 4, 5].map(s => (
-              <Star
-                key={s} size={32}
-                style={{ cursor: 'pointer', transition: 'transform .1s' }}
-                fill={s <= (hoveredStar || rating) ? '#C9A84C' : 'none'}
-                color={s <= (hoveredStar || rating) ? '#C9A84C' : T.lineD}
-                onMouseEnter={() => setHoveredStar(s)}
-                onMouseLeave={() => setHoveredStar(0)}
-                onClick={() => setRating(s)}/>
-            ))}
-          </div>
-          <p style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.82rem', fontWeight: 600, color: '#C9A84C' }}>
-            {LABELS[hoveredStar || rating]}
-          </p>
-        </div>
-
-        <textarea
-          rows={4} value={comment} onChange={e => setComment(e.target.value)}
-          placeholder="Tell others about your experience…"
-          style={{ width: '100%', padding: '12px 14px', background: T.offwhite, border: `1.5px solid ${T.line}`, borderRadius: 10, fontSize: '0.9rem', color: T.ink, fontFamily: '"Inter",sans-serif', outline: 'none', resize: 'vertical', marginBottom: 16 }}/>
-
-        <button
-          onClick={() => void submit()} disabled={loading}
-          style={{ width: '100%', padding: 13, background: loading ? T.inkL : T.forest, color: '#fff', border: 'none', borderRadius: 10, fontFamily: '"Inter",sans-serif', fontSize: '0.88rem', fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-          {loading
-            ? <><Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }}/> Submitting…</>
-            : 'Submit Review ✦'}
-        </button>
-      </motion.div>
-    </motion.div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────
-//  RECENTLY VIEWED BAR
-// ─────────────────────────────────────────────────────────────────
-
-export function RecentlyViewedBar({
-  items, onProduct, T,
-}: {
-  items: Product[];
-  onProduct: (p: Product) => void;
-  T: Tokens;
-}) {
-  if (!items.length) return null;
-  return (
-    <div style={{ padding: '20px 16px 0' }}>
-      <p style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.72rem', fontWeight: 600, color: T.inkL, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-        <Clock size={12}/> Recently Viewed
-      </p>
-      <div style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 4 }}>
-        {items.map(p => (
-          <div key={p.id} onClick={() => onProduct(p)} style={{ flexShrink: 0, cursor: 'pointer', textAlign: 'center', width: 68 }}>
-            <img src={p.imageUrl} alt={p.name} style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 10, border: `2px solid ${T.line}`, display: 'block', margin: '0 auto 4px' }}/>
-            <p style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.6rem', color: T.inkL, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>₹{p.price}</p>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────
-//  FLASH SALE BANNER
-// ─────────────────────────────────────────────────────────────────
-
-export function FlashSaleBanner({
-  endsAt, discount, T, onShop,
-}: {
-  endsAt: Date;
-  discount: number;
-  T: Tokens;
-  onShop: () => void;
-}) {
-  const [timeLeft, setTimeLeft] = useState('');
-
-  useEffect(() => {
-    const tick = () => {
-      const diff = endsAt.getTime() - Date.now();
-      if (diff <= 0) { setTimeLeft('Expired'); return; }
-      const h = Math.floor(diff / 3_600_000);
-      const m = Math.floor((diff % 3_600_000) / 60_000);
-      const s = Math.floor((diff % 60_000) / 1_000);
-      setTimeLeft(`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`);
-    };
-    tick();
-    const t = setInterval(tick, 1000);
-    return () => clearInterval(t);
-  }, [endsAt]);
-
-  if (!timeLeft || timeLeft === 'Expired') return null;
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
-      style={{ background: 'linear-gradient(135deg,#9B1B10 0%,#D04B20 100%)', padding: '14px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <Zap size={18} color="#FFD700" fill="#FFD700"/>
-        <div>
-          <p style={{ fontFamily: '"Playfair Display",serif', fontWeight: 700, fontSize: '1rem', color: '#fff', margin: 0, lineHeight: 1.2 }}>Flash Sale — {discount}% Off Everything!</p>
-          <p style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.72rem', color: 'rgba(255,255,255,0.7)', margin: 0 }}>Limited time offer</p>
-        </div>
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: 8, padding: '6px 12px', fontFamily: 'monospace', fontSize: '1rem', color: '#FFD700', fontWeight: 700, letterSpacing: '0.1em' }}>
-          {timeLeft}
-        </div>
-        <button
-          onClick={onShop}
-          style={{ padding: '8px 16px', background: '#FFD700', color: '#4A1000', border: 'none', borderRadius: 8, fontFamily: '"Inter",sans-serif', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-          Shop Now
-        </button>
-      </div>
-    </motion.div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────
-//  TRENDING + NEW ARRIVALS
-// ─────────────────────────────────────────────────────────────────
-
-export function TrendingSection({
-  products, onProduct, onAddToCart, T,
-}: {
-  products: Product[];
-  onProduct: (p: Product) => void;
-  onAddToCart: (p: Product) => void;
-  T: Tokens;
-}) {
-  const top = products.slice(0, 8);
-  if (!top.length) return null;
-
-  return (
-    <div style={{ padding: '28px 16px 0', maxWidth: 1200, margin: '0 auto' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-        <TrendingUp size={20} color={T.forest}/>
-        <h2 style={{ fontFamily: '"Playfair Display",serif', fontSize: '1.2rem', fontWeight: 700, color: T.ink }}>Trending Now</h2>
-        <div style={{ flex: 1, height: 1, background: T.line }}/>
-      </div>
-      <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 8 }}>
-        {top.map((p, i) => (
-          <div
-            key={p.id} onClick={() => onProduct(p)}
-            style={{ flexShrink: 0, width: 140, background: T.white, borderRadius: 14, overflow: 'hidden', cursor: 'pointer', border: `1px solid ${T.line}`, boxShadow: `0 2px 10px ${T.shadow}`, position: 'relative' }}>
-            <div style={{ position: 'absolute', top: 8, left: 8, zIndex: 1, background: T.forest, color: '#fff', borderRadius: '50%', width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: '"Inter",sans-serif', fontSize: '0.62rem', fontWeight: 700 }}>
-              #{i + 1}
-            </div>
-            <img src={p.imageUrl} alt={p.name} style={{ width: '100%', aspectRatio: '1', objectFit: 'cover' }}/>
-            <div style={{ padding: '8px 10px' }}>
-              <p style={{ fontFamily: '"Playfair Display",serif', fontStyle: 'italic', fontSize: '0.78rem', color: T.ink, margin: '0 0 4px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{p.name}</p>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.82rem', fontWeight: 700, color: T.ink }}>₹{p.price}</span>
-                <button
-                  onClick={e => { e.stopPropagation(); onAddToCart(p); }}
-                  style={{ padding: '4px 8px', background: T.forest, color: '#fff', border: 'none', borderRadius: 6, fontSize: '0.6rem', fontWeight: 600, cursor: 'pointer', fontFamily: '"Inter",sans-serif' }}>
-                  Add
-                </button>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-export function NewArrivalsSection({
-  products, onProduct, T,
-}: {
-  products: Product[];
-  onProduct: (p: Product) => void;
-  T: Tokens;
-}) {
-  const newest = [...products]
-    .sort((a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime())
-    .slice(0, 6);
-
-  if (!newest.length) return null;
-
-  return (
-    <div style={{ padding: '28px 16px 0', maxWidth: 1200, margin: '0 auto' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-        <span style={{ fontSize: '1.1rem' }}>✨</span>
-        <h2 style={{ fontFamily: '"Playfair Display",serif', fontSize: '1.2rem', fontWeight: 700, color: T.ink }}>New Arrivals</h2>
-        <div style={{ flex: 1, height: 1, background: T.line }}/>
-      </div>
-      <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 8 }}>
-        {newest.map(p => (
-          <div
-            key={p.id} onClick={() => onProduct(p)}
-            style={{ flexShrink: 0, width: 140, background: T.white, borderRadius: 14, overflow: 'hidden', cursor: 'pointer', border: `1px solid ${T.line}`, boxShadow: `0 2px 10px ${T.shadow}` }}>
-            <div style={{ position: 'relative' }}>
-              <img src={p.imageUrl} alt={p.name} style={{ width: '100%', aspectRatio: '1', objectFit: 'cover' }}/>
-              <div style={{ position: 'absolute', top: 8, left: 8, background: T.gold, color: '#4A3000', borderRadius: 6, padding: '2px 8px', fontFamily: '"Inter",sans-serif', fontSize: '0.6rem', fontWeight: 700 }}>NEW</div>
-            </div>
-            <div style={{ padding: '8px 10px' }}>
-              <p style={{ fontFamily: '"Playfair Display",serif', fontStyle: 'italic', fontSize: '0.78rem', color: T.ink, margin: '0 0 2px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{p.name}</p>
-              <p style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.82rem', fontWeight: 700, color: T.ink }}>₹{p.price}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────
-//  COUPON INPUT
-// ─────────────────────────────────────────────────────────────────
-
-const COUPONS: Record<string, number> = {
-  WELCOME10: 10, CRAFT20: 20, ARTISAN15: 15, FIRST30: 30, DIWALI25: 25,
-};
-
-export function CouponInput({
-  T, onApply, total,
-}: {
-  T: Tokens;
-  onApply: (c: { code: string; discount: number } | null) => void;
-  total: number;
-}) {
-  const [code,    setCode]    = useState('');
-  const [applied, setApplied] = useState<{ code: string; discount: number } | null>(null);
-  const [error,   setError]   = useState('');
-
-  const apply = () => {
-    const pct = COUPONS[code.toUpperCase().trim()];
-    if (!pct) { setError('Invalid coupon code'); return; }
-    const c = { code: code.toUpperCase().trim(), discount: pct };
-    setApplied(c); onApply(c); setError('');
-  };
-
-  const remove = () => { setApplied(null); onApply(null); setCode(''); setError(''); };
-
-  if (applied) {
-    const savings = (total * applied.discount) / 100;
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#E8F8E8', border: '1px solid #A0CFA0', borderRadius: 10, padding: '10px 14px' }}>
-        <div>
-          <p style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.78rem', fontWeight: 700, color: '#2D5A2D', margin: 0 }}>
-            🎉 "{applied.code}" applied! −{applied.discount}%
-          </p>
-          <p style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.72rem', color: '#4A7A4A', margin: 0 }}>
-            You save ₹{savings.toFixed(2)}
-          </p>
-        </div>
-        <button onClick={remove} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#4A7A4A', padding: 4 }}>
-          <X size={14}/>
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div>
-      <div style={{ display: 'flex', gap: 8 }}>
-        <input
-          type="text" placeholder="Enter coupon code"
-          value={code}
-          onChange={e => { setCode(e.target.value); setError(''); }}
-          onKeyDown={e => e.key === 'Enter' && apply()}
-          style={{ flex: 1, padding: '10px 12px', background: T.offwhite, border: `1.5px solid ${error ? T.rust : T.line}`, borderRadius: 8, fontSize: '0.85rem', color: T.ink, fontFamily: '"Inter",sans-serif', outline: 'none', textTransform: 'uppercase' }}/>
-        <button
-          onClick={apply}
-          style={{ padding: '10px 16px', background: T.forest, color: '#fff', border: 'none', borderRadius: 8, fontFamily: '"Inter",sans-serif', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>
-          Apply
-        </button>
-      </div>
-      {error && <p style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.72rem', color: T.rust, marginTop: 6 }}>✗ {error}</p>}
-      <p style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.68rem', color: T.inkL, marginTop: 6 }}>Try: WELCOME10, CRAFT20, ARTISAN15, FIRST30</p>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────
-//  RAZORPAY PAYMENT BUTTON
-// ─────────────────────────────────────────────────────────────────
-
-export function RazorpayButton({
-  amount, name, description, prefill, T, onSuccess, onFailure, disabled,
-}: {
-  amount: number;
-  name: string;
-  description: string;
-  prefill?: { name: string; email: string; contact: string };
-  T: Tokens;
-  onSuccess: (paymentId: string) => void;
-  onFailure: () => void;
-  disabled?: boolean;
-}) {
-  const [loading, setLoading] = useState(false);
-
-  const pay = () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const Razorpay = (window as any).Razorpay;
-    if (!Razorpay) { alert('Razorpay not loaded. Add the script to index.html.'); return; }
-    setLoading(true);
-
-    const options = {
-      key:         import.meta.env.VITE_RAZORPAY_KEY_ID ?? 'rzp_test_YOUR_KEY',
-      amount:      Math.round(amount * 100),
-      currency:    'INR',
-      name, description, prefill,
-      theme:       { color: T.forest },
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      handler:     (response: any) => { setLoading(false); onSuccess(response.razorpay_payment_id as string); },
-      modal:       { ondismiss: () => setLoading(false) },
-    };
-
+  const placeOrder = async () => {
+    const err = validate(); if (err) { setError(err); return; }
+    setSending(true); setError('');
     try {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-assignment
-      const rzp = new Razorpay(options);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-      rzp.on('payment.failed', () => { setLoading(false); onFailure(); });
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-      rzp.open();
-    } catch { setLoading(false); onFailure(); }
+      const emailjs = await import('@emailjs/browser');
+      const itemsText = cart.map(i=>`• ${i.product.name} (x${i.qty}) — Rs.${(i.product.price*i.qty).toFixed(2)}`).join('\n');
+      await emailjs.send(
+        import.meta.env.VITE_EMAILJS_SERVICE_ID,
+        import.meta.env.VITE_EMAILJS_TEMPLATE_ID,
+        { order_id:orderId, customer_name:form.name, name:form.name,
+          customer_email:form.email, to_email:form.email, email:form.email,
+          mobile:form.mobile, order_items:itemsText, order_total:total.toFixed(2),
+          delivery_address:`${form.address}, ${form.city} - ${form.pincode}`,
+          order_date:new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'}) },
+        import.meta.env.VITE_EMAILJS_PUBLIC_KEY,
+      );
+      onSuccess();
+    } catch (e) { console.error('EmailJS error:', e); setError('Could not send confirmation. Please try again.'); }
+    finally { setSending(false); }
   };
 
   return (
-    <button
-      onClick={pay} disabled={disabled || loading}
-      style={{ width: '100%', padding: 13, background: disabled || loading ? T.lineD : '#0A5299', color: '#fff', border: 'none', borderRadius: 10, fontFamily: '"Inter",sans-serif', fontSize: '0.88rem', fontWeight: 600, cursor: disabled || loading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-      {loading
-        ? <><Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }}/> Opening Razorpay…</>
-        : <>💳 Pay ₹{amount.toFixed(2)} with Razorpay</>}
-    </button>
-  );
-}
-
-export function CashOnDeliveryOption({
-  selected, onSelect, T,
-}: {
-  selected: boolean;
-  onSelect: () => void;
-  T: Tokens;
-}) {
-  return (
-    <button
-      onClick={onSelect}
-      style={{ width: '100%', padding: '12px 16px', background: selected ? T.forestXL : T.offwhite, border: `1.5px solid ${selected ? T.forest : T.line}`, borderRadius: 10, display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', transition: 'all .15s', textAlign: 'left' }}>
-      <div style={{ width: 18, height: 18, borderRadius: '50%', border: `2px solid ${selected ? T.forest : T.lineD}`, background: selected ? T.forest : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-        {selected && <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#fff' }}/>}
-      </div>
-      <div>
-        <p style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.85rem', fontWeight: 600, color: T.ink, margin: 0 }}>💵 Cash on Delivery</p>
-        <p style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.72rem', color: T.inkL, margin: 0 }}>Pay when your order arrives</p>
-      </div>
-    </button>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────
-//  ORDER HISTORY VIEW
-// ─────────────────────────────────────────────────────────────────
-
-const STATUS_STEPS  = ['pending','confirmed','shipped','delivered'] as const;
-const STATUS_LABELS: Record<string, string> = { pending:'Placed', confirmed:'Confirmed', shipped:'Shipped', delivered:'Delivered', cancelled:'Cancelled' };
-const STATUS_COLORS: Record<string, string> = { pending:'#C9A84C', confirmed:'#3D7A9A', shipped:'#7A5AAA', delivered:'#2D7A2D', cancelled:'#9B3D2A' };
-
-export function OrderHistoryView({
-  orders, T,
-}: {
-  orders: Order[];
-  T: Tokens;
-  onProduct?: (p: Product) => void;
-}) {
-  const [expanded, setExpanded] = useState<string | null>(null);
-
-  if (!orders.length) return (
-    <div style={{ textAlign: 'center', padding: '60px 20px' }}>
-      <ShoppingBag size={48} color={T.lineD} style={{ margin: '0 auto 16px', display: 'block' }}/>
-      <p style={{ fontFamily: '"Playfair Display",serif', fontStyle: 'italic', color: T.inkM, fontSize: '1.1rem' }}>No orders yet</p>
-      <p style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.85rem', color: T.inkL, marginTop: 8 }}>Your order history will appear here</p>
-    </div>
-  );
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      {orders.map(order => {
-        const isOpen   = expanded === order.id;
-        const stepIdx  = STATUS_STEPS.indexOf(order.status as typeof STATUS_STEPS[number]);
-        const color    = STATUS_COLORS[order.status] ?? T.inkL;
-
-        return (
-          <div key={order.id} style={{ background: T.white, borderRadius: 16, border: `1px solid ${T.line}`, overflow: 'hidden', boxShadow: `0 2px 10px ${T.shadow}` }}>
-            <button
-              onClick={() => setExpanded(isOpen ? null : order.id)}
-              style={{ width: '100%', padding: '14px 16px', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left' }}>
-              <div style={{ flexShrink: 0 }}>
-                <div style={{ width: 44, height: 44, borderRadius: 10, background: `${color}20`, display: 'flex', alignItems: 'center', justifyContent: 'center', border: `1.5px solid ${color}40` }}>
-                  <Package size={18} color={color}/>
-                </div>
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 }}>
-                  <p style={{ fontFamily: 'monospace', fontSize: '0.78rem', fontWeight: 700, color: T.ink, margin: 0 }}>{order.id}</p>
-                  <span style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.7rem', fontWeight: 700, color, background: `${color}15`, padding: '2px 8px', borderRadius: 100 }}>
-                    {STATUS_LABELS[order.status]}
-                  </span>
-                </div>
-                <p style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.72rem', color: T.inkL, margin: '0 0 2px' }}>
-                  {new Date(order.date).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' })}
-                </p>
-                <p style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.82rem', fontWeight: 600, color: T.forest, margin: 0 }}>
-                  ₹{order.total.toFixed(2)} · {order.items.length} item{order.items.length !== 1 ? 's' : ''}
-                </p>
-              </div>
-              <ChevronRight size={16} color={T.inkL} style={{ transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform .2s', flexShrink: 0 }}/>
-            </button>
-
-            <AnimatePresence>
-              {isOpen && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                  style={{ overflow: 'hidden' }}>
-                  <div style={{ padding: '0 16px 16px', borderTop: `1px solid ${T.line}` }}>
-
-                    {/* Progress bar */}
-                    {order.status !== 'cancelled' && (
-                      <div style={{ padding: '16px 0 14px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
-                          {STATUS_STEPS.map((step, i) => {
-                            const done = i <= stepIdx;
-                            return (
-                              <React.Fragment key={step}>
-                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', zIndex: 1 }}>
-                                  <div style={{ width: 24, height: 24, borderRadius: '50%', background: done ? T.forest : T.paper, border: `2px solid ${done ? T.forest : T.line}`, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all .3s' }}>
-                                    {done && <Check size={12} color="#fff"/>}
-                                  </div>
-                                  <p style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.6rem', color: done ? T.forest : T.inkL, fontWeight: done ? 600 : 400, marginTop: 4, textAlign: 'center', whiteSpace: 'nowrap' }}>
-                                    {STATUS_LABELS[step]}
-                                  </p>
-                                </div>
-                                {i < STATUS_STEPS.length - 1 && (
-                                  <div style={{ flex: 1, height: 2, background: i < stepIdx ? T.forest : T.line, margin: '0 4px', marginBottom: 20, transition: 'background .3s' }}/>
-                                )}
-                              </React.Fragment>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Items */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 14 }}>
-                      {order.items.map((item, i) => (
-                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                          <img src={item.imageUrl} alt={item.name} style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: 8, flexShrink: 0 }}/>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <p style={{ fontFamily: '"Playfair Display",serif', fontStyle: 'italic', fontSize: '0.82rem', color: T.ink, margin: '0 0 2px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{item.name}</p>
-                            <p style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.7rem', color: T.inkL, margin: 0 }}>{item.sellerName} · x{item.qty}</p>
-                          </div>
-                          <p style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.82rem', fontWeight: 600, color: T.forest, flexShrink: 0 }}>
-                            ₹{(item.price * item.qty).toFixed(2)}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div style={{ background: T.paper, borderRadius: 10, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.72rem', color: T.inkL }}>Payment</span>
-                        <span style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.72rem', fontWeight: 600, color: T.inkM, textTransform: 'uppercase' }}>
-                          {order.paymentMethod === 'cod' ? 'Cash on Delivery' : 'Razorpay'}
-                        </span>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.78rem', fontWeight: 600, color: T.inkM }}>Total</span>
-                        <span style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.88rem', fontWeight: 700, color: T.ink }}>₹{order.total.toFixed(2)}</span>
-                      </div>
-                    </div>
+    <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
+      style={{ position:'fixed', inset:0, zIndex:700, background:'rgba(0,0,0,0.5)', backdropFilter:'blur(4px)',
+        display:'flex', alignItems:'flex-end', justifyContent:'center' }}>
+      <motion.div initial={{y:'100%'}} animate={{y:0}} exit={{y:'100%'}} transition={{type:'spring',damping:30,stiffness:280}}
+        style={{ background:T.white, borderRadius:'16px 16px 0 0', width:'100%', maxWidth:520,
+          maxHeight:'92vh', display:'flex', flexDirection:'column', boxShadow:`0 -8px 40px ${T.shadowL}` }}>
+        <div style={{ padding:'20px 24px 16px', borderBottom:`1px solid ${T.line}`, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+          <div>
+            <h2 style={{ fontFamily:'"Playfair Display",serif', fontSize:'1.2rem', fontWeight:700, color:T.ink, margin:'0 0 4px' }}>Delivery Details</h2>
+            <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.78rem', color:T.inkL, margin:0 }}>Order {orderId} · ₹{total.toFixed(2)}</p>
+          </div>
+          <button onClick={onClose} style={{ background:T.paper, border:'none', borderRadius:8, width:36, height:36, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:T.inkM }}><X size={18}/></button>
+        </div>
+        <div style={{ flex:1, overflowY:'auto', padding:'20px 24px' }}>
+          <div style={{ background:T.paper, borderRadius:12, padding:'14px', marginBottom:20 }}>
+            <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', fontWeight:600, color:T.inkL, textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:10 }}>Order Summary</p>
+            {cart.map(item => (
+              <div key={item.product.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                  <img src={item.product.imageUrl} style={{ width:40, height:40, objectFit:'cover', borderRadius:6 }} alt=""/>
+                  <div>
+                    <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', color:T.ink, margin:0, ...clamp(1) }}>{item.product.name}</p>
+                    <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', color:T.inkL, margin:0 }}>x{item.qty}</p>
                   </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────
-//  EDIT PROFILE MODAL
-// ─────────────────────────────────────────────────────────────────
-
-export function EditProfileModal({
-  user, T, onClose, onSave,
-}: {
-  user: { name: string; email?: string };
-  T: Tokens;
-  onClose: () => void;
-  onSave: (data: { name?: string; bio?: string; location?: string }) => Promise<void>;
-}) {
-  const [name,     setName]     = useState(user.name);
-  const [bio,      setBio]      = useState('');
-  const [location, setLocation] = useState('');
-  const [loading,  setLoading]  = useState(false);
-
-  const inp: React.CSSProperties = {
-    width: '100%', marginTop: 6, padding: '11px 14px',
-    background: T.offwhite, border: `1.5px solid ${T.line}`,
-    borderRadius: 10, fontSize: '0.9rem', outline: 'none',
-    color: T.ink, fontFamily: '"Inter",sans-serif',
-  };
-
-  const save = async () => {
-    setLoading(true);
-    try { await onSave({ name: name.trim(), bio, location }); onClose(); }
-    finally { setLoading(false); }
-  };
-
-  return (
-    <motion.div
-      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      style={{ position: 'fixed', inset: 0, zIndex: 700, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-      <motion.div
-        initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }}
-        style={{ background: T.white, borderRadius: 20, padding: '28px 24px', maxWidth: 400, width: '100%', boxShadow: `0 24px 64px ${T.shadowL}` }}>
-
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-          <h2 style={{ fontFamily: '"Playfair Display",serif', fontSize: '1.2rem', fontWeight: 700, color: T.ink }}>Edit Profile</h2>
-          <button onClick={onClose} style={{ background: T.paper, border: 'none', borderRadius: 8, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-            <X size={16} color={T.inkM}/>
-          </button>
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div>
-            <label style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.72rem', fontWeight: 600, color: T.inkL, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Display Name</label>
-            <input type="text" value={name} onChange={e => setName(e.target.value)} style={inp}/>
-          </div>
-          <div>
-            <label style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.72rem', fontWeight: 600, color: T.inkL, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Bio</label>
-            <textarea rows={3} value={bio} onChange={e => setBio(e.target.value)} placeholder="Tell buyers about yourself…" style={{ ...inp, resize: 'vertical' }}/>
-          </div>
-          <div>
-            <label style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.72rem', fontWeight: 600, color: T.inkL, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Location</label>
-            <div style={{ position: 'relative', marginTop: 6 }}>
-              <MapPin style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: T.inkL }} size={14}/>
-              <input type="text" value={location} onChange={e => setLocation(e.target.value)} placeholder="e.g. Mumbai, Maharashtra" style={{ ...inp, marginTop: 0, paddingLeft: 34 }}/>
+                </div>
+                <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.88rem', fontWeight:600, color:T.forest, margin:0 }}>₹{(item.product.price*item.qty).toFixed(2)}</p>
+              </div>
+            ))}
+            <div style={{ borderTop:`1px solid ${T.line}`, marginTop:10, paddingTop:10, display:'flex', justifyContent:'space-between' }}>
+              <span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', fontWeight:600, color:T.inkM }}>Total</span>
+              <span style={{ fontFamily:'"Inter",sans-serif', fontSize:'1rem', fontWeight:700, color:T.ink }}>₹{total.toFixed(2)}</span>
             </div>
           </div>
-        </div>
-
-        <div style={{ display: 'flex', gap: 10, marginTop: 24 }}>
-          <button onClick={onClose} style={{ flex: 1, padding: 12, background: T.paper, color: T.inkL, border: `1px solid ${T.line}`, borderRadius: 10, fontFamily: '"Inter",sans-serif', fontSize: '0.85rem', cursor: 'pointer' }}>
-            Cancel
-          </button>
-          <button
-            onClick={() => void save()} disabled={loading}
-            style={{ flex: 2, padding: 12, background: loading ? T.inkL : T.forest, color: '#fff', border: 'none', borderRadius: 10, fontFamily: '"Inter",sans-serif', fontSize: '0.85rem', fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-            {loading
-              ? <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }}/> Saving…</>
-              : 'Save Changes'}
-          </button>
-        </div>
-      </motion.div>
-    </motion.div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────
-//  FORGOT PASSWORD MODAL
-// ─────────────────────────────────────────────────────────────────
-
-export function ForgotPasswordModal({ T, onClose }: { T: Tokens; onClose: () => void }) {
-  const [email,   setEmail]   = useState('');
-  const [sent,    setSent]    = useState(false);
-  const [loading, setLoading] = useState(false);
-
-  const send = async () => {
-    if (!email.includes('@')) return;
-    setLoading(true);
-    await new Promise<void>(r => setTimeout(r, 1200));
-    setLoading(false); setSent(true);
-  };
-
-  return (
-    <motion.div
-      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      style={{ position: 'fixed', inset: 0, zIndex: 700, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-      <motion.div
-        initial={{ scale: 0.9 }} animate={{ scale: 1 }}
-        style={{ background: T.white, borderRadius: 20, padding: '32px 28px', maxWidth: 380, width: '100%', boxShadow: `0 24px 64px ${T.shadowL}` }}>
-        {sent ? (
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: '3rem', marginBottom: 16 }}>📬</div>
-            <h2 style={{ fontFamily: '"Playfair Display",serif', fontSize: '1.3rem', fontWeight: 700, color: T.ink, marginBottom: 10 }}>Check Your Email</h2>
-            <p style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.85rem', color: T.inkL, marginBottom: 24, lineHeight: 1.6 }}>
-              We've sent a password reset link to <strong style={{ color: T.ink }}>{email}</strong>.
-            </p>
-            <button onClick={onClose} style={{ width: '100%', padding: 12, background: T.forest, color: '#fff', border: 'none', borderRadius: 10, fontFamily: '"Inter",sans-serif', fontSize: '0.88rem', fontWeight: 600, cursor: 'pointer' }}>Done</button>
-          </div>
-        ) : (
-          <>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-              <h2 style={{ fontFamily: '"Playfair Display",serif', fontSize: '1.2rem', fontWeight: 700, color: T.ink }}>Reset Password</h2>
-              <button onClick={onClose} style={{ background: T.paper, border: 'none', borderRadius: 8, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                <X size={16} color={T.inkM}/>
-              </button>
-            </div>
-            <p style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.85rem', color: T.inkL, marginBottom: 20, lineHeight: 1.6 }}>Enter your email and we'll send you a reset link.</p>
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.72rem', fontWeight: 600, color: T.inkL, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Email Address</label>
-              <input
-                type="email" value={email} onChange={e => setEmail(e.target.value)}
-                placeholder="your@email.com"
-                onKeyDown={e => e.key === 'Enter' && void send()}
-                autoFocus
-                style={{ width: '100%', marginTop: 6, padding: '12px 14px', background: T.offwhite, border: `1.5px solid ${T.line}`, borderRadius: 10, fontSize: '0.9rem', outline: 'none', color: T.ink, fontFamily: '"Inter",sans-serif' }}/>
-            </div>
-            <button
-              onClick={() => void send()}
-              disabled={loading || !email.includes('@')}
-              style={{ width: '100%', padding: 13, background: loading || !email.includes('@') ? T.lineD : T.forest, color: '#fff', border: 'none', borderRadius: 10, fontFamily: '"Inter",sans-serif', fontSize: '0.88rem', fontWeight: 600, cursor: loading || !email.includes('@') ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-              {loading
-                ? <><Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }}/> Sending…</>
-                : 'Send Reset Link'}
-            </button>
-          </>
-        )}
-      </motion.div>
-    </motion.div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────
-//  EDIT LISTING MODAL
-// ─────────────────────────────────────────────────────────────────
-
-export function EditListingModal({
-  product, T, onClose, onSave,
-}: {
-  product: Product;
-  T: Tokens;
-  onClose: () => void;
-  onSave: (updates: Partial<Product>) => Promise<void>;
-}) {
-  const [name,        setName]        = useState(product.name);
-  const [price,       setPrice]       = useState(String(product.price));
-  const [description, setDescription] = useState(product.description ?? '');
-  const [stock,       setStock]       = useState(product.stock ?? 10);
-  const [loading,     setLoading]     = useState(false);
-
-  const inp: React.CSSProperties = {
-    width: '100%', marginTop: 6, padding: '11px 14px',
-    background: T.offwhite, border: `1.5px solid ${T.line}`,
-    borderRadius: 10, fontSize: '0.9rem', outline: 'none',
-    color: T.ink, fontFamily: '"Inter",sans-serif',
-  };
-
-  const save = async () => {
-    setLoading(true);
-    try { await onSave({ name, price: Number(price), description, stock: Number(stock) }); onClose(); }
-    finally { setLoading(false); }
-  };
-
-  return (
-    <motion.div
-      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      style={{ position: 'fixed', inset: 0, zIndex: 700, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-      <motion.div
-        initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
-        transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-        style={{ background: T.white, borderRadius: '20px 20px 0 0', width: '100%', maxWidth: 480, maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: `0 -8px 40px ${T.shadowL}` }}>
-
-        <div style={{ padding: '20px 24px', borderBottom: `1px solid ${T.line}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <Edit3 size={18} color={T.forest}/>
-            <h2 style={{ fontFamily: '"Playfair Display",serif', fontSize: '1.1rem', fontWeight: 700, color: T.ink, margin: 0 }}>Edit Listing</h2>
-          </div>
-          <button onClick={onClose} style={{ background: T.paper, border: 'none', borderRadius: 8, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-            <X size={16} color={T.inkM}/>
-          </button>
-        </div>
-
-        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: T.paper, borderRadius: 12, padding: 12 }}>
-            <img src={product.imageUrl} alt="" style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 8, flexShrink: 0 }}/>
-            <p style={{ fontFamily: '"Crimson Pro",serif', fontStyle: 'italic', fontSize: '0.9rem', color: T.inkL }}>Editing: {product.name}</p>
-          </div>
-          <div>
-            <label style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.72rem', fontWeight: 600, color: T.inkL, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Item Name</label>
-            <input value={name} onChange={e => setName(e.target.value)} style={inp}/>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div>
-              <label style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.72rem', fontWeight: 600, color: T.inkL, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Price (₹)</label>
-              <input type="number" value={price} onChange={e => setPrice(e.target.value)} style={inp}/>
-            </div>
-            <div>
-              <label style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.72rem', fontWeight: 600, color: T.inkL, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Stock Qty</label>
-              <input type="number" min={0} value={stock} onChange={e => setStock(Number(e.target.value))} style={inp}/>
+          <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', fontWeight:600, color:T.forest, textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:14, display:'flex', alignItems:'center', gap:6 }}><User size={13}/>Personal Details</p>
+          <div style={{ display:'flex', flexDirection:'column', gap:14, marginBottom:20 }}>
+            <div><label style={lbl}>Full Name *</label><input type="text" placeholder="Your full name" value={form.name} onChange={e=>setForm({...form,name:e.target.value})} style={inp}/></div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+              <div><label style={lbl}>Email *</label><input type="email" placeholder="email@example.com" value={form.email} onChange={e=>setForm({...form,email:e.target.value})} style={inp}/></div>
+              <div><label style={lbl}>Mobile *</label><input type="tel" placeholder="9876543210" value={form.mobile} onChange={e=>setForm({...form,mobile:e.target.value})} style={inp}/></div>
             </div>
           </div>
-          <div>
-            <label style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.72rem', fontWeight: 600, color: T.inkL, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Description</label>
-            <textarea rows={4} value={description} onChange={e => setDescription(e.target.value)} style={{ ...inp, resize: 'vertical' }}/>
+          <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', fontWeight:600, color:T.forest, textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:14, display:'flex', alignItems:'center', gap:6 }}><MapPin size={13}/>Delivery Address</p>
+          <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+            <div><label style={lbl}>Street Address *</label><input type="text" placeholder="House no., Street, Area" value={form.address} onChange={e=>setForm({...form,address:e.target.value})} style={inp}/></div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+              <div><label style={lbl}>City *</label><input type="text" placeholder="Mumbai" value={form.city} onChange={e=>setForm({...form,city:e.target.value})} style={inp}/></div>
+              <div><label style={lbl}>Pincode *</label><input type="text" placeholder="400001" value={form.pincode} onChange={e=>setForm({...form,pincode:e.target.value})} style={inp}/></div>
+            </div>
           </div>
-          {stock === 0 && (
-            <div style={{ padding: '10px 14px', background: '#FFF0EE', border: '1px solid #F5C5BE', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <AlertTriangle size={14} color={T.rust}/>
-              <span style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.78rem', color: T.rust }}>
-                Stock = 0 will mark this item as <strong>Sold Out</strong>
-              </span>
+          {error && (
+            <div style={{ marginTop:14, padding:'12px 14px', background:'#FFF0EE', border:'1px solid #F5C5BE', borderRadius:8, display:'flex', alignItems:'center', gap:8 }}>
+              <AlertCircle size={14} color="#9B3D2A"/><span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.85rem', color:'#9B3D2A' }}>{error}</span>
             </div>
           )}
         </div>
-
-        <div style={{ padding: '16px 24px', borderTop: `1px solid ${T.line}`, display: 'flex', gap: 10, flexShrink: 0 }}>
-          <button onClick={onClose} style={{ flex: 1, padding: 12, background: T.paper, color: T.inkL, border: `1px solid ${T.line}`, borderRadius: 10, fontFamily: '"Inter",sans-serif', fontSize: '0.85rem', cursor: 'pointer' }}>Cancel</button>
-          <button
-            onClick={() => void save()} disabled={loading}
-            style={{ flex: 2, padding: 12, background: loading ? T.inkL : T.forest, color: '#fff', border: 'none', borderRadius: 10, fontFamily: '"Inter",sans-serif', fontSize: '0.85rem', fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-            {loading
-              ? <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }}/> Saving…</>
-              : <>Save Changes <ArrowRight size={14}/></>}
+        <div style={{ padding:'20px 24px', borderTop:`1px solid ${T.line}` }}>
+          <button onClick={placeOrder} disabled={sending}
+            style={{ width:'100%', padding:'14px', background:sending?T.inkL:T.forest, color:'#fff', border:'none', borderRadius:10, fontFamily:'"Inter",sans-serif', fontSize:'0.9rem', fontWeight:600, cursor:sending?'not-allowed':'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+            {sending ? <><Loader2 size={16} style={{animation:'spin 1s linear infinite'}}/> Sending…</> : <>Place Order & Get Email Confirmation <ArrowRight size={15}/></>}
           </button>
         </div>
       </motion.div>
@@ -1435,86 +321,843 @@ export function EditListingModal({
   );
 }
 
-// ─────────────────────────────────────────────────────────────────
-//  STOCK BADGE
-// ─────────────────────────────────────────────────────────────────
-
-export function StockBadge({ stock, T, children }: { stock: number; T: Tokens; children: React.ReactNode }) {
+// ── ORDER SUCCESS ──────────────────────────────────────────
+function OrderSuccessModal({ orderId, email, onClose, T }:{ orderId:string; email:string; onClose:()=>void; T:Tokens }) {
   return (
-    <div style={{ position: 'relative' }}>
-      {children}
-      {stock === 0 && (
-        <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 'inherit' }}>
-          <div style={{ background: T.rust, color: '#fff', fontFamily: '"Inter",sans-serif', fontSize: '0.72rem', fontWeight: 700, padding: '4px 12px', borderRadius: 100, letterSpacing: '0.06em', textTransform: 'uppercase' }}>Sold Out</div>
+    <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
+      style={{ position:'fixed', inset:0, zIndex:800, background:'rgba(0,0,0,0.6)', display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
+      <motion.div initial={{scale:0.85,opacity:0}} animate={{scale:1,opacity:1}} transition={{type:'spring',stiffness:200,damping:18}}
+        style={{ background:T.white, borderRadius:20, padding:'36px 28px', maxWidth:380, width:'100%', textAlign:'center', boxShadow:`0 24px 64px ${T.shadowL}` }}>
+        <motion.div initial={{scale:0}} animate={{scale:1}} transition={{delay:0.2,type:'spring',stiffness:260}}
+          style={{ width:72, height:72, background:T.forest, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 20px', fontSize:'2rem' }}>✓</motion.div>
+        <h2 style={{ fontFamily:'"Playfair Display",serif', fontSize:'1.5rem', fontWeight:700, color:T.ink, marginBottom:8 }}>Order Placed!</h2>
+        <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.88rem', color:T.inkL, marginBottom:20, lineHeight:1.6 }}>Your handcrafted items are on their way 🌿</p>
+        <div style={{ background:T.paper, borderRadius:10, padding:'14px', marginBottom:16 }}>
+          <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.7rem', color:T.inkL, fontWeight:600, textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:6 }}>Order ID</p>
+          <p style={{ fontFamily:'monospace', fontSize:'1rem', fontWeight:700, color:T.forest }}>{orderId}</p>
+        </div>
+        <div style={{ background:'#F0F8F0', border:'1px solid #C8E0C8', borderRadius:10, padding:'12px', marginBottom:24 }}>
+          <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.85rem', color:'#3D6B3D' }}>📧 Confirmation email sent!</p>
+        </div>
+        <button onClick={onClose} style={{ width:'100%', padding:'13px', background:T.forest, color:'#fff', border:'none', borderRadius:10, fontFamily:'"Inter",sans-serif', fontSize:'0.88rem', fontWeight:600, cursor:'pointer' }}>
+          Continue Shopping
+        </button>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ── SHOP NAME MODAL ────────────────────────────────────────
+function ShopNameModal({ onConfirm, onClose, T }:{ onConfirm:(s:string)=>void; onClose:()=>void; T:Tokens }) {
+  const [shopName, setShopName] = useState('');
+  return (
+    <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
+      style={{ position:'fixed', inset:0, zIndex:600, background:'rgba(0,0,0,0.5)', backdropFilter:'blur(4px)', display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
+      <motion.div initial={{scale:0.9,y:20}} animate={{scale:1,y:0}}
+        style={{ background:T.white, borderRadius:20, padding:'32px 28px', maxWidth:380, width:'100%', boxShadow:`0 24px 64px ${T.shadowL}` }}>
+        <div style={{ textAlign:'center', marginBottom:24 }}>
+          <div style={{ fontSize:'3rem', marginBottom:12 }}>🏪</div>
+          <h2 style={{ fontFamily:'"Playfair Display",serif', fontSize:'1.4rem', fontWeight:700, color:T.ink, marginBottom:8 }}>Open Your Workshop</h2>
+          <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.85rem', color:T.inkL, lineHeight:1.6 }}>Give your shop a name to start selling your handcrafted items</p>
+        </div>
+        <div style={{ marginBottom:20 }}>
+          <label style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.75rem', fontWeight:600, color:T.inkL, textTransform:'uppercase', letterSpacing:'0.08em' }}>Shop Name</label>
+          <input type="text" placeholder="e.g. Priya's Craft Studio" value={shopName} onChange={e=>setShopName(e.target.value)}
+            onKeyDown={e=>{ if(e.key==='Enter'&&shopName.trim()) onConfirm(shopName.trim()); }} autoFocus
+            style={{ width:'100%', marginTop:8, padding:'12px 14px', background:T.offwhite, border:`1.5px solid ${T.line}`, borderRadius:10, fontSize:'0.95rem', outline:'none', color:T.ink, fontFamily:'"Inter",sans-serif' }}/>
+        </div>
+        <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+          <button onClick={()=>shopName.trim()&&onConfirm(shopName.trim())} disabled={!shopName.trim()}
+            style={{ padding:'13px', background:shopName.trim()?T.forest:T.lineD, color:'#fff', border:'none', borderRadius:10, fontFamily:'"Inter",sans-serif', fontSize:'0.88rem', fontWeight:600, cursor:shopName.trim()?'pointer':'not-allowed' }}>
+            Open Workshop 🌿
+          </button>
+          <button onClick={onClose} style={{ padding:'12px', background:'transparent', color:T.inkL, border:`1px solid ${T.line}`, borderRadius:10, fontFamily:'"Inter",sans-serif', fontSize:'0.85rem', cursor:'pointer' }}>Cancel</button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ── IMAGE UPLOADER ─────────────────────────────────────────
+const isMobile = () => /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+function ImageUploader({ value, onChange, T }:{ value:string; onChange:(url:string)=>void; T:Tokens }) {
+  const [uploading, setUploading]   = useState(false);
+  const [preview, setPreview]       = useState(value);
+  const [error, setError]           = useState('');
+  const [urlMode, setUrlMode]       = useState(false);
+  const [urlInput, setUrlInput]     = useState('');
+  const fileRef    = useRef<HTMLInputElement>(null);
+  const cameraRef  = useRef<HTMLInputElement>(null);
+  const folderRef  = useRef<HTMLInputElement>(null);
+
+  const reset = () => { setPreview(''); onChange(''); setUrlInput(''); setUrlMode(false); setError(''); };
+
+  const uploadFile = async (file:File) => {
+    setUploading(true); setError('');
+    const reader = new FileReader();
+    reader.onload = e => { const d=e.target?.result as string; setPreview(d); onChange(d); };
+    reader.readAsDataURL(file);
+    try {
+      const fd = new FormData(); fd.append('image', file);
+      const apiKey = import.meta.env.VITE_IMGBB_API_KEY||'c2d3f5d7f9e1a3b5';
+      const res  = await fetch(`https://api.imgbb.com/1/upload?key=${apiKey}`,{method:'POST',body:fd});
+      const data = await res.json();
+      if (data.success) { setPreview(data.data.url); onChange(data.data.url); }
+    } catch { /* keep local base64 preview */ }
+    finally { setUploading(false); }
+  };
+
+  const applyUrl = () => {
+    const u = urlInput.trim();
+    if (!u) { setError('Please enter a valid URL'); return; }
+    if (!/^https?:\/\//i.test(u)) { setError('URL must start with http:// or https://'); return; }
+    setPreview(u); onChange(u); setUrlMode(false); setError('');
+  };
+
+  const mobile = isMobile();
+
+  const pickBtn = (accent:string, bg:string): React.CSSProperties => ({
+    display:'flex', alignItems:'center', justifyContent:'center', gap:6,
+    padding:'9px 14px', background:bg, color:accent,
+    border:`1.5px solid ${accent}`, borderRadius:9,
+    fontFamily:'"Inter",sans-serif', fontSize:'0.78rem', fontWeight:600,
+    cursor:'pointer', flex:1, whiteSpace:'nowrap', transition:'opacity .15s',
+  });
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+      <input ref={fileRef}   type="file" accept="image/*"             onChange={e=>{ const f=e.target.files?.[0]; if(f) uploadFile(f); }} style={{display:'none'}}/>
+      <input ref={cameraRef} type="file" accept="image/*" capture="environment" onChange={e=>{ const f=e.target.files?.[0]; if(f) uploadFile(f); }} style={{display:'none'}}/>
+      <input ref={folderRef} type="file" accept="image/*"             onChange={e=>{ const f=e.target.files?.[0]; if(f) uploadFile(f); }} style={{display:'none'}}/>
+
+      {preview ? (
+        <div style={{ position:'relative', borderRadius:12, overflow:'hidden', border:`1px solid ${T.line}` }}>
+          <img src={preview} alt="Preview" style={{ width:'100%', height:200, objectFit:'cover', display:'block' }}/>
+          {uploading && (
+            <div style={{ position:'absolute', inset:0, background:'rgba(0,0,0,0.45)', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:10 }}>
+              <Loader2 size={28} color="#fff" style={{animation:'spin 1s linear infinite'}}/>
+              <span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.78rem', color:'#fff', fontWeight:600 }}>Uploading…</span>
+            </div>
+          )}
+          <button onClick={reset} style={{ position:'absolute', top:8, right:8, background:T.rust, border:'none', borderRadius:'50%', width:30, height:30, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', color:'#fff' }}>
+            <X size={13}/>
+          </button>
+          <div style={{ position:'absolute', bottom:0, left:0, right:0, padding:'8px 10px', background:'rgba(0,0,0,0.55)', backdropFilter:'blur(4px)', display:'flex', gap:8 }}>
+            {mobile ? (
+              <>
+                <button onClick={()=>fileRef.current?.click()}   style={pickBtn('#fff','rgba(255,255,255,0.15)')}>🖼 Gallery</button>
+                <button onClick={()=>cameraRef.current?.click()} style={pickBtn('#fff','rgba(255,255,255,0.15)')}>📷 Camera</button>
+              </>
+            ) : (
+              <>
+                <button onClick={()=>folderRef.current?.click()} style={pickBtn('#fff','rgba(255,255,255,0.15)')}>📁 Folder</button>
+                <button onClick={()=>fileRef.current?.click()}   style={pickBtn('#fff','rgba(255,255,255,0.15)')}>🖼 Browse</button>
+              </>
+            )}
+            <button onClick={()=>setUrlMode(v=>!v)} style={pickBtn('#fff','rgba(255,255,255,0.15)')}>🔗 URL</button>
+          </div>
+        </div>
+      ) : (
+        <div onDragOver={e=>e.preventDefault()} onDrop={e=>{ e.preventDefault(); const f=e.dataTransfer.files?.[0]; if(f) uploadFile(f); }}
+          style={{ border:`2px dashed ${T.line}`, borderRadius:12, background:T.offwhite, overflow:'hidden' }}>
+          {uploading ? (
+            <div style={{ padding:'36px 20px', display:'flex', flexDirection:'column', alignItems:'center', gap:12 }}>
+              <Loader2 size={32} color={T.forest} style={{animation:'spin 1s linear infinite'}}/>
+              <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', color:T.forest, fontWeight:600 }}>Uploading image…</p>
+            </div>
+          ) : (
+            <>
+              <div style={{ padding:'24px 20px 16px', textAlign:'center' }}>
+                <div style={{ width:52, height:52, background:T.forestXL, borderRadius:12, display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 10px' }}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={T.forest} strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                </div>
+                <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', fontWeight:600, color:T.inkM, marginBottom:4 }}>
+                  {mobile ? 'Tap a button below to add photo' : 'Drag & drop or choose below'}
+                </p>
+                <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.7rem', color:T.inkL }}>JPG · PNG · WEBP · Max 5 MB</p>
+              </div>
+              <div style={{ padding:'0 14px 14px', display:'flex', gap:8, flexWrap:'wrap' }}>
+                {mobile ? (
+                  <>
+                    <button onClick={()=>fileRef.current?.click()} style={pickBtn(T.forest, T.forestXL)}>🖼️ Gallery</button>
+                    <button onClick={()=>cameraRef.current?.click()} style={pickBtn(T.earth, T.earthXL)}>📷 Camera</button>
+                  </>
+                ) : (
+                  <>
+                    <button onClick={()=>folderRef.current?.click()} style={pickBtn(T.forest, T.forestXL)}>📁 From Folder</button>
+                    <button onClick={()=>fileRef.current?.click()} style={pickBtn(T.earth, T.earthXL)}>🖼️ Browse Files</button>
+                  </>
+                )}
+                <button onClick={()=>setUrlMode(v=>!v)} style={pickBtn(T.inkM, T.paper)}>🔗 Paste URL</button>
+              </div>
+            </>
+          )}
         </div>
       )}
-      {stock > 0 && stock <= 5 && (
-        <div style={{ position: 'absolute', bottom: 8, left: 8, background: 'rgba(180,80,20,0.9)', color: '#fff', fontFamily: '"Inter",sans-serif', fontSize: '0.6rem', fontWeight: 700, padding: '3px 8px', borderRadius: 100 }}>
-          Only {stock} left!
+
+      <AnimatePresence>
+        {urlMode && (
+          <motion.div initial={{opacity:0,y:-6}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-6}} transition={{duration:.15}}
+            style={{ background:T.paper, borderRadius:10, padding:'12px 14px', border:`1.5px solid ${T.forestL}` }}>
+            <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', fontWeight:600, color:T.forest, textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:8 }}>Paste Image URL</p>
+            <div style={{ display:'flex', gap:8 }}>
+              <input type="url" autoFocus placeholder="https://example.com/photo.jpg" value={urlInput}
+                onChange={e=>{ setUrlInput(e.target.value); setError(''); }}
+                onKeyDown={e=>{ if(e.key==='Enter') applyUrl(); if(e.key==='Escape') setUrlMode(false); }}
+                style={{ flex:1, padding:'9px 12px', background:T.white, border:`1.5px solid ${T.line}`, borderRadius:8, fontSize:'0.85rem', outline:'none', color:T.ink, fontFamily:'"Inter",sans-serif' }}/>
+              <button onClick={applyUrl} style={{ padding:'9px 16px', background:T.forest, color:'#fff', border:'none', borderRadius:8, fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', fontWeight:600, cursor:'pointer', whiteSpace:'nowrap' }}>Use</button>
+              <button onClick={()=>{ setUrlMode(false); setError(''); }} style={{ width:36, height:36, background:T.paper, border:`1px solid ${T.line}`, borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', color:T.inkL, flexShrink:0 }}><X size={14}/></button>
+            </div>
+            <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.7rem', color:T.inkL, marginTop:6 }}>Press Enter to confirm · Esc to cancel</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {error && (
+        <div style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 12px', background:'#FFF0EE', border:'1px solid #F5C5BE', borderRadius:8 }}>
+          <AlertCircle size={13} color="#9B3D2A"/>
+          <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.78rem', color:'#9B3D2A' }}>{error}</p>
         </div>
       )}
     </div>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────
-//  SALES DASHBOARD
-// ─────────────────────────────────────────────────────────────────
+// ── RE-LOGIN MODAL ─────────────────────────────────────────
+// Shown after role upgrade so user can get a fresh seller token
+function ReLoginModal({ email, shopName, onSuccess, onClose, T }:
+  { email:string; shopName:string; onSuccess:(u:{role:'buyer'|'seller';name:string;id:string;email:string})=>void; onClose:()=>void; T:Tokens }) {
+  const [pass, setPass]       = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError]     = useState('');
 
-export function SalesDashboard({ products, orders, T }: { products: Product[]; orders: Order[]; T: Tokens }) {
-  const activeOrders = orders.filter(o => o.status !== 'cancelled');
-  const totalRevenue = activeOrders.reduce((s, o) => s + o.total, 0);
-  const totalOrders  = activeOrders.length;
-  const avgOrder     = totalOrders ? totalRevenue / totalOrders : 0;
-
-  const productRevenue = products
-    .map(p => {
-      const rev = activeOrders.reduce((sum, o) => {
-        const item = o.items.find(i => i.name === p.name);
-        return sum + (item ? item.price * item.qty : 0);
-      }, 0);
-      return { ...p, revenue: rev };
-    })
-    .sort((a, b) => b.revenue - a.revenue);
-
-  const stats = [
-    { label: 'Total Revenue', value: `₹${totalRevenue.toFixed(0)}`, icon: <DollarSign size={18} color={T.forest}/>,     color: T.forestXL },
-    { label: 'Total Orders',  value: totalOrders,                    icon: <ShoppingBag size={18} color='#5A3AAA'/>,     color: '#EDE8F8'   },
-    { label: 'Avg Order',     value: `₹${avgOrder.toFixed(0)}`,      icon: <BarChart2 size={18} color='#3A6AAA'/>,       color: '#E0EEFF'   },
-    { label: 'Products',      value: products.length,                 icon: <Package size={18} color={T.earth}/>,         color: T.earthXL   },
-  ];
+  const submit = async () => {
+    if (!pass.trim()) { setError('Please enter your password'); return; }
+    setLoading(true); setError('');
+    try {
+      const res = await api.auth.login(email, pass);
+      onSuccess({ role: res.user.role, name: res.user.shopName ?? res.user.name, id: res.user.id, email });
+    } catch (e) {
+      if (e instanceof ApiError) setError(e.message);
+      else setError('Could not sign in. Please try again.');
+    } finally { setLoading(false); }
+  };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 12 }}>
-        {stats.map(({ label, value, icon, color }) => (
-          <div key={label} style={{ background: color, borderRadius: 14, padding: '16px 14px', border: `1px solid ${T.line}` }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-              {icon}
-              <p style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.68rem', fontWeight: 600, color: T.inkL, textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>{label}</p>
-            </div>
-            <p style={{ fontFamily: '"Playfair Display",serif', fontSize: '1.4rem', fontWeight: 700, color: T.ink, margin: 0 }}>{value}</p>
+    <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
+      style={{ position:'fixed', inset:0, zIndex:800, background:'rgba(0,0,0,0.6)', backdropFilter:'blur(6px)', display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
+      <motion.div initial={{scale:0.9,y:20}} animate={{scale:1,y:0}} transition={{type:'spring',stiffness:220,damping:22}}
+        style={{ background:T.white, borderRadius:20, padding:'32px 28px', maxWidth:380, width:'100%', boxShadow:`0 24px 64px ${T.shadowL}` }}>
+        <div style={{ textAlign:'center', marginBottom:24 }}>
+          <div style={{ fontSize:'2.5rem', marginBottom:12 }}>🔑</div>
+          <h2 style={{ fontFamily:'"Playfair Display",serif', fontSize:'1.3rem', fontWeight:700, color:T.ink, marginBottom:8 }}>One Last Step</h2>
+          <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.85rem', color:T.inkL, lineHeight:1.6 }}>
+            Your workshop <strong style={{color:T.ink}}>"{shopName}"</strong> is ready!<br/>
+            Sign in once more to activate your seller account.
+          </p>
+        </div>
+
+        <div style={{ background:T.paper, borderRadius:10, padding:'10px 14px', marginBottom:20, display:'flex', alignItems:'center', gap:8 }}>
+          <User size={14} color={T.inkL}/>
+          <span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', color:T.inkM }}>{email}</span>
+        </div>
+
+        <div style={{ marginBottom:16 }}>
+          <label style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.75rem', fontWeight:600, color:T.inkL, textTransform:'uppercase', letterSpacing:'0.08em' }}>Password</label>
+          <input type="password" placeholder="••••••••" value={pass}
+            onChange={e=>{ setPass(e.target.value); setError(''); }}
+            onKeyDown={e=>{ if(e.key==='Enter') void submit(); }}
+            autoFocus
+            style={{ width:'100%', marginTop:8, padding:'12px 14px', background:T.offwhite, border:`1.5px solid ${error?T.rust:T.line}`, borderRadius:10, fontSize:'0.92rem', outline:'none', color:T.ink, fontFamily:'"Inter",sans-serif' }}/>
+        </div>
+
+        {error && (
+          <div style={{ padding:'10px 12px', background:'#FFF0EE', border:'1px solid #F5C5BE', borderRadius:8, display:'flex', alignItems:'center', gap:8, marginBottom:14 }}>
+            <AlertCircle size={13} color="#9B3D2A"/>
+            <span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', color:'#9B3D2A' }}>{error}</span>
           </div>
-        ))}
+        )}
+
+        <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+          <button onClick={()=>void submit()} disabled={loading}
+            style={{ padding:'13px', background:loading?T.inkL:T.forest, color:'#fff', border:'none', borderRadius:10, fontFamily:'"Inter",sans-serif', fontSize:'0.88rem', fontWeight:600, cursor:loading?'not-allowed':'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+            {loading ? <><Loader2 size={16} style={{animation:'spin 1s linear infinite'}}/> Signing in…</> : <>Activate Seller Account <ArrowRight size={15}/></>}
+          </button>
+          <button onClick={onClose} style={{ padding:'11px', background:'transparent', color:T.inkL, border:`1px solid ${T.line}`, borderRadius:10, fontFamily:'"Inter",sans-serif', fontSize:'0.85rem', cursor:'pointer' }}>Cancel</button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ── APP ────────────────────────────────────────────────────
+export function App() {
+  const [darkMode, setDarkMode] = useState(() => {
+    try { return localStorage.getItem('ab_dark')==='true'; } catch { return false; }
+  });
+  const T = makeTokens(darkMode);
+
+  const [products, setProducts]       = useState<Product[]>([]);
+  const [loading, setLoading]         = useState(true);
+  const [selectedCat, setSelectedCat] = useState<Category|'All'>('All');
+  const [search, setSearch]           = useState('');
+  const [debSearch, setDebSearch]     = useState('');
+  const [view, setView]               = useState<ViewName>('home');
+  const [selProduct, setSelProduct]   = useState<Product|null>(null);
+  const [prevView, setPrevView]       = useState<NavName>('home');
+  const [user, setUser]               = useState<AppUser>({role:null,name:'',id:''});
+  const [toast, setToast]             = useState<{msg:string;type:'success'|'error'}|null>(null);
+  const [cart, setCart]               = useState<CartItem[]>(() => {
+    try { const s=localStorage.getItem('ab_cart'); return s?JSON.parse(s):[]; } catch { return []; }
+  });
+  const [cartOpen, setCartOpen]       = useState(false);
+  const [showShopModal, setShowShopModal]   = useState(false);
+
+  // ── NEW: re-login modal state ──────────────────────────
+  const [reLoginData, setReLoginData] = useState<{email:string; shopName:string}|null>(null);
+
+  const timer = useRef<ReturnType<typeof setTimeout>|undefined>(undefined);
+  const showToast = useCallback((msg:string, type:'success'|'error'='success') => setToast({msg,type}), []);
+
+  useEffect(() => { try { localStorage.setItem('ab_dark', String(darkMode)); } catch {} }, [darkMode]);
+  useEffect(() => { try { localStorage.setItem('ab_cart',JSON.stringify(cart)); } catch {} }, [cart]);
+
+  useEffect(() => {
+    if (tokenStore.get()) {
+      api.auth.me().then(u=>setUser({role:u.role,name:u.shopName??u.name,id:u.id,email:u.email}))
+        .catch(e=>{ if(e instanceof ApiError&&e.status===401) tokenStore.remove(); });
+    }
+  }, []);
+
+  useEffect(() => {
+    clearTimeout(timer.current);
+    timer.current = setTimeout(()=>setDebSearch(search),350);
+    return ()=>clearTimeout(timer.current);
+  }, [search]);
+
+  useEffect(() => {
+    if (view!=='home') return;
+    setLoading(true);
+    api.products.list({ category:selectedCat!=='All'?selectedCat:undefined, search:debSearch||undefined, limit:60 })
+      .then(res=>setProducts(res.data))
+      .catch(()=>showToast('Could not load products','error'))
+      .finally(()=>setLoading(false));
+  }, [selectedCat, debSearch, view, showToast]);
+
+  const addToCart = useCallback((product:Product, qty:number=1) => {
+    setCart(prev => {
+      const ex=prev.find(i=>i.product.id===product.id);
+      if (ex) return prev.map(i=>i.product.id===product.id?{...i,qty:i.qty+qty}:i);
+      return [...prev,{product,qty}];
+    });
+    showToast(`Added to basket!`);
+  }, [showToast]);
+
+  const updateCartQty  = useCallback((id:string,qty:number)=>setCart(p=>p.map(i=>i.product.id===id?{...i,qty}:i)),[]);
+  const removeFromCart = useCallback((id:string)=>setCart(p=>p.filter(i=>i.product.id!==id)),[]);
+
+  const goToProduct = useCallback((p:Product) => {
+    setPrevView(view==='product'?prevView:(view as NavName));
+    setSelProduct(p); setView('product');
+    window.scrollTo({top:0,behavior:'smooth'});
+  }, [view, prevView]);
+
+  const nav = useCallback((v:NavName) => {
+    if (v==='sell') {
+      if (!user.role) { setView('login'); setSelProduct(null); return; }
+      if (user.role!=='seller') { setShowShopModal(true); return; }
+    }
+    if (v==='profile'&&!user.role) { setView('login'); setSelProduct(null); return; }
+    setView(v); setSelProduct(null);
+  }, [user.role]);
+
+  const handleLogout = useCallback(() => {
+    api.auth.logout(); setUser({role:null,name:'',id:''});
+    setView('home'); setSelProduct(null); showToast('Signed out');
+  }, [showToast]);
+
+  const handleLogin = useCallback((u:{role:'buyer'|'seller';name:string;id:string;email?:string}) => {
+    setUser(u); setView('home'); setSelProduct(null); showToast(`Welcome, ${u.name}!`);
+  }, [showToast]);
+
+  // ── FIXED handleShopConfirm ────────────────────────────
+  // After updating the role on the backend we need a FRESH JWT
+  // that encodes role=seller. We show a small re-login modal
+  // so the user enters their password once more and gets a new token.
+  const handleShopConfirm = useCallback(async (shopName: string) => {
+    setShowShopModal(false);
+    try {
+      await api.auth.updateProfile({ role: 'seller', shopName });
+      // Wipe the old buyer token so API calls use the new one after re-login
+      api.auth.logout();
+      setUser({ role: null, name: '', id: '' });
+      // Show the lightweight re-login modal (keeps email pre-filled)
+      setReLoginData({ email: user.email ?? '', shopName });
+    } catch {
+      showToast('Could not open workshop', 'error');
+    }
+  }, [user.email, showToast]);
+
+  // Called when re-login modal succeeds — user now has a seller JWT
+  const handleReLoginSuccess = useCallback((u:{role:'buyer'|'seller';name:string;id:string;email:string}) => {
+    setReLoginData(null);
+    setUser(u);
+    setView('sell');
+    showToast(`Workshop opened! Welcome, ${u.name} 🌿`);
+  }, [showToast]);
+
+  const cartCount = cart.reduce((s,i)=>s+i.qty,0);
+  const isDev = user.email === DEV_EMAIL || user.name?.toLowerCase().includes('shubham');
+
+  const bambooBg = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='200'%3E%3Crect width='120' height='200' fill='none'/%3E%3Crect x='18' y='0' width='10' height='200' rx='5' fill='%2348724A' opacity='0.13'/%3E%3Crect x='20' y='30' width='6' height='3' rx='1' fill='%2348724A' opacity='0.18'/%3E%3Crect x='20' y='70' width='6' height='3' rx='1' fill='%2348724A' opacity='0.18'/%3E%3Crect x='20' y='110' width='6' height='3' rx='1' fill='%2348724A' opacity='0.18'/%3E%3Crect x='20' y='150' width='6' height='3' rx='1' fill='%2348724A' opacity='0.18'/%3E%3Crect x='20' y='190' width='6' height='3' rx='1' fill='%2348724A' opacity='0.18'/%3E%3Cellipse cx='14' cy='52' rx='18' ry='4' fill='%2348724A' opacity='0.10' transform='rotate(-30 14 52)'/%3E%3Cellipse cx='32' cy='92' rx='16' ry='3.5' fill='%2348724A' opacity='0.09' transform='rotate(25 32 92)'/%3E%3Crect x='72' y='0' width='9' height='200' rx='4.5' fill='%2348724A' opacity='0.10'/%3E%3Crect x='74' y='50' width='5' height='3' rx='1' fill='%2348724A' opacity='0.15'/%3E%3Crect x='74' y='90' width='5' height='3' rx='1' fill='%2348724A' opacity='0.15'/%3E%3Crect x='74' y='130' width='5' height='3' rx='1' fill='%2348724A' opacity='0.15'/%3E%3Crect x='74' y='170' width='5' height='3' rx='1' fill='%2348724A' opacity='0.15'/%3E%3Cellipse cx='66' cy='72' rx='17' ry='3.5' fill='%2348724A' opacity='0.09' transform='rotate(28 66 72)'/%3E%3Cellipse cx='84' cy='112' rx='15' ry='3' fill='%2348724A' opacity='0.08' transform='rotate(-22 84 112)'/%3E%3Crect x='106' y='0' width='6' height='200' rx='3' fill='%2348724A' opacity='0.07'/%3E%3Crect x='107' y='60' width='4' height='2' rx='1' fill='%2348724A' opacity='0.10'/%3E%3Crect x='107' y='120' width='4' height='2' rx='1' fill='%2348724A' opacity='0.10'/%3E%3C/svg%3E")`;
+
+  return (
+    <div style={{ minHeight:'100vh', background:T.offwhite, color:T.ink, fontFamily:'"Inter",sans-serif', paddingBottom:'5rem', position:'relative' }}>
+      <div style={{ position:'fixed', inset:0, zIndex:0, backgroundImage:bambooBg, backgroundSize:'120px 200px', backgroundRepeat:'repeat', opacity: darkMode ? 0.6 : 1, pointerEvents:'none' }}/>
+      <div style={{ position:'relative', zIndex:1 }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,900;1,400;1,600&family=Crimson+Pro:ital,wght@0,400;0,600;1,400&family=Inter:wght@300;400;500;600;700&display=swap');
+        *{box-sizing:border-box;margin:0;padding:0;}
+        @keyframes spin{to{transform:rotate(360deg)}}
+        @keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+        .scrollbar-hide::-webkit-scrollbar{display:none;} .scrollbar-hide{-ms-overflow-style:none;scrollbar-width:none;}
+        .card-hover{transition:transform .2s,box-shadow .2s;} .card-hover:hover{transform:translateY(-4px);}
+        .btn-primary{transition:background .15s,transform .1s;} .btn-primary:active{transform:scale(.98);}
+        img{display:block;} input,select,textarea{font-family:'"Inter",sans-serif';}
+        .mobile-search{display:none;}
+        @media(max-width:640px){.mobile-search{display:block;} .desktop-search{display:none!important;} .hide-mobile{display:none!important;}}
+        @media(max-width:480px){.product-split{grid-template-columns:1fr!important;} .product-split-img{position:static!important;border-right:none!important;border-bottom:1px solid ${T.line};} .sell-grid{grid-template-columns:1fr!important;} .stats-grid{grid-template-columns:repeat(2,1fr)!important;}}
+        :root{--sat:env(safe-area-inset-top);--sab:env(safe-area-inset-bottom);}
+      `}</style>
+
+      <AnimatePresence>{toast&&<Toast msg={toast.msg} type={toast.type} onClose={()=>setToast(null)}/>}</AnimatePresence>
+      <AnimatePresence>{cartOpen&&<CartDrawer cart={cart} onClose={()=>setCartOpen(false)} onUpdateQty={updateCartQty} onRemove={removeFromCart} onClearCart={()=>setCart([])} showToast={showToast} T={T} onBrowseWares={()=>{ setCartOpen(false); setView('home'); setSelProduct(null); }}/>}</AnimatePresence>
+      <AnimatePresence>{showShopModal&&<ShopNameModal onConfirm={handleShopConfirm} onClose={()=>setShowShopModal(false)} T={T}/>}</AnimatePresence>
+
+      {/* ── RE-LOGIN MODAL (shown after role upgrade) ── */}
+      <AnimatePresence>
+        {reLoginData && (
+          <ReLoginModal
+            email={reLoginData.email}
+            shopName={reLoginData.shopName}
+            onSuccess={handleReLoginSuccess}
+            onClose={()=>{ setReLoginData(null); showToast('Workshop setup cancelled'); }}
+            T={T}
+          />
+        )}
+      </AnimatePresence>
+
+      <div style={{ background:T.forest, height:'env(safe-area-inset-top)', position:'fixed', top:0, left:0, right:0, zIndex:101 }}/>
+
+      {/* HEADER */}
+      <header style={{ position:'sticky', top:'env(safe-area-inset-top)', zIndex:100, background: darkMode ? 'rgba(26,26,26,0.97)' : 'rgba(255,255,255,0.95)', backdropFilter:'blur(12px)', borderBottom:`1px solid ${T.line}`, boxShadow:`0 1px 12px ${T.shadow}` }}>
+        <div style={{ maxWidth:1200, margin:'0 auto', padding:'0 16px', height:60, display:'flex', alignItems:'center', gap:12 }}>
+          {view==='product' && (
+            <button onClick={()=>{ setView(prevView); setSelProduct(null); }}
+              style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 12px', background:T.paper, border:'none', borderRadius:8, color:T.inkM, fontFamily:'"Inter",sans-serif', fontSize:'0.8rem', fontWeight:600, cursor:'pointer', flexShrink:0 }}>
+              <ChevronLeft size={15}/> Back
+            </button>
+          )}
+          <div onClick={()=>nav('home')} style={{ cursor:'pointer', display:'flex', alignItems:'center', gap:10, flexShrink:0, userSelect:'none' }}>
+            <div style={{ width:34, height:34, background:T.forest, borderRadius:10, display:'flex', alignItems:'center', justifyContent:'center' }}>
+              <Leaf size={18} color="#fff"/>
+            </div>
+            <div>
+              <h1 style={{ fontFamily:'"Playfair Display",serif', fontSize:'1.1rem', fontWeight:700, color:T.ink, lineHeight:1, letterSpacing:'-0.02em' }}>Artisan Bazaar</h1>
+              <p className="hide-mobile" style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.62rem', color:T.inkL, lineHeight:1, marginTop:2, letterSpacing:'0.04em' }}>Handcrafted Marketplace</p>
+            </div>
+          </div>
+          {view!=='product'&&view!=='login' && (
+            <div className="desktop-search" style={{ position:'relative', flex:1, maxWidth:480 }}>
+              <Search style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', color:T.inkL }} size={15}/>
+              <input type="text" placeholder="Search handcrafted items…" value={search} onChange={e=>setSearch(e.target.value)}
+                style={{ width:'100%', paddingLeft:38, paddingRight:16, paddingTop:9, paddingBottom:9, background:T.paper, border:`1.5px solid ${T.line}`, borderRadius:10, fontSize:'0.88rem', outline:'none', color:T.ink, fontFamily:'"Inter",sans-serif' }}/>
+            </div>
+          )}
+          <div style={{ marginLeft:'auto', display:'flex', alignItems:'center', gap:8 }}>
+            <button onClick={()=>setDarkMode(d=>!d)}
+              style={{ width:36, height:36, borderRadius:8, border:`1px solid ${T.line}`, background:T.paper, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', color:T.inkM, flexShrink:0 }}>
+              {darkMode ? <Sun size={16}/> : <Moon size={16}/>}
+            </button>
+            {user.role ? (
+              <div onClick={()=>nav('profile')} style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 10px', background:T.paper, borderRadius:10, border:`1px solid ${T.line}`, cursor:'pointer' }}>
+                <div style={{ width:28, height:28, borderRadius:'50%', background:T.forest, display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontSize:'0.78rem', fontWeight:700, flexShrink:0 }}>{user.name[0]?.toUpperCase()}</div>
+                <div className="hide-mobile">
+                  <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', fontWeight:600, color:T.ink, lineHeight:1 }}>{user.name}</p>
+                  <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.62rem', color:T.inkL, lineHeight:1, marginTop:2, textTransform:'capitalize' }}>{user.role}</p>
+                </div>
+              </div>
+            ) : (
+              <button onClick={()=>nav('login')} style={{ padding:'8px 16px', background:T.forest, color:'#fff', border:'none', borderRadius:8, fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', fontWeight:600, cursor:'pointer' }}>Sign In</button>
+            )}
+          </div>
+        </div>
+        {view!=='product'&&view!=='login' && (
+          <div className="mobile-search" style={{ padding:'8px 16px 10px', borderTop:`1px solid ${T.line}` }}>
+            <div style={{ position:'relative' }}>
+              <Search style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', color:T.inkL }} size={14}/>
+              <input type="text" placeholder="Search handcrafted items…" value={search} onChange={e=>setSearch(e.target.value)}
+                style={{ width:'100%', paddingLeft:36, paddingRight:12, paddingTop:9, paddingBottom:9, background:T.paper, border:`1.5px solid ${T.line}`, borderRadius:10, fontSize:'0.88rem', outline:'none', color:T.ink }}/>
+            </div>
+          </div>
+        )}
+      </header>
+
+      {/* MAIN */}
+      <main>
+        <AnimatePresence mode="wait">
+          {view==='home' && (
+            <motion.div key="home" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} transition={{duration:.15}}>
+              <HomeView products={products} loading={loading} selectedCat={selectedCat} setSelectedCat={setSelectedCat}
+                onProduct={goToProduct} onAddToCart={addToCart} T={T}/>
+            </motion.div>
+          )}
+          {view==='sell' && (
+            <motion.div key="sell" initial={{opacity:0,y:16}} animate={{opacity:1,y:0}} exit={{opacity:0}} transition={{duration:.2}}>
+              <div style={{ padding:'32px 16px', maxWidth:640, margin:'0 auto' }}>
+                <SellView T={T} onAdd={async p => {
+                  try { await api.products.create(p); showToast('Your craft is now listed! ✦'); setView('home'); }
+                  catch(e) { showToast(e instanceof ApiError?e.message:'Failed to list','error'); }
+                }}/>
+              </div>
+            </motion.div>
+          )}
+          {view==='profile' && (
+            <motion.div key="profile" initial={{opacity:0,y:16}} animate={{opacity:1,y:0}} exit={{opacity:0}} transition={{duration:.2}}>
+              <div style={{ padding:'32px 16px' }}>
+                <ProfileView user={user} onProduct={goToProduct} onLogout={handleLogout} T={T}/>
+              </div>
+            </motion.div>
+          )}
+          {view==='login' && (
+            <motion.div key="login" initial={{opacity:0,y:16}} animate={{opacity:1,y:0}} exit={{opacity:0}} transition={{duration:.2}}>
+              <LoginView onLogin={handleLogin} T={T}/>
+            </motion.div>
+          )}
+          {view==='product'&&selProduct && (
+            <motion.div key={`pd-${selProduct.id}`} initial={{opacity:0,y:16}} animate={{opacity:1,y:0}} exit={{opacity:0}} transition={{duration:.2}}>
+              <ProductDetailView product={selProduct} onProduct={goToProduct} isOwn={selProduct.sellerId===user.id} onAddToCart={addToCart} showToast={showToast} T={T}/>
+            </motion.div>
+          )}
+          {view==='admin' && (
+            <motion.div key="admin" initial={{opacity:0,y:16}} animate={{opacity:1,y:0}} exit={{opacity:0}} transition={{duration:.2}}>
+              <div style={{ padding:'24px 16px' }}>
+                <AdminView T={T} showToast={showToast}/>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </main>
+
+      {/* BOTTOM NAV */}
+      <nav style={{ position:'fixed', bottom:0, left:0, right:0, background: darkMode ? 'rgba(26,26,26,0.97)' : 'rgba(255,255,255,0.97)', backdropFilter:'blur(12px)', borderTop:`1px solid ${T.line}`, zIndex:100, paddingBottom:'env(safe-area-inset-bottom)' }}>
+        <div style={{ display:'flex', justifyContent:'space-around', maxWidth:480, margin:'0 auto', padding:'6px 0' }}>
+          {([
+            {v:'home' as NavName, icon:<Home size={21}/>, label:'Home'},
+            {v:'sell' as NavName, icon:<PlusCircle size={21}/>, label:'Sell'},
+            {v:'cart' as NavName, icon:<ShoppingCart size={21}/>, label:'Cart'},
+            {v:'profile' as NavName, icon:<User size={21}/>, label:'Me'},
+            ...(isDev ? [{v:'admin' as NavName, icon:<Shield size={21}/>, label:'Dev'}] : []),
+          ]).map(({v,icon,label}) => {
+            const active = view===v||(view==='product'&&v==='home')||(showShopModal&&v==='sell');
+            return (
+              <button key={v} onClick={()=>v==='cart'?setCartOpen(true):nav(v)}
+                style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:3, padding:'6px 16px', background:'none', border:'none', color:active?(v==='admin'?'#7A3D9A':T.forest):T.inkL, cursor:'pointer', position:'relative', transition:'color .15s' }}>
+                <div style={{ padding:'4px 10px', borderRadius:10, background:active?(v==='admin'?'#EDE0F5':T.forestXL):'transparent', transition:'background .15s' }}>
+                  {React.cloneElement(icon as React.ReactElement<{strokeWidth:number}>, {strokeWidth:active?2.5:1.8})}
+                </div>
+                <span style={{ fontSize:'0.62rem', fontFamily:'"Inter",sans-serif', fontWeight:active?700:400, letterSpacing:'0.02em' }}>{label}</span>
+                {v==='cart'&&cartCount>0 && <span style={{ position:'absolute', top:2, right:6, background:T.rust, color:'#fff', borderRadius:'50%', width:16, height:16, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'0.55rem', fontWeight:700 }}>{cartCount}</span>}
+              </button>
+            );
+          })}
+        </div>
+      </nav>
+      </div>
+    </div>
+  );
+}
+
+// ── HOME VIEW ──────────────────────────────────────────────
+function HomeView({ products, loading, selectedCat, setSelectedCat, onProduct, onAddToCart, T }:
+  { products:Product[]; loading:boolean; selectedCat:Category|'All'; setSelectedCat:(c:Category|'All')=>void;
+    onProduct:(p:Product)=>void; onAddToCart:(p:Product,qty?:number)=>void; T:Tokens }) {
+  return (
+    <div>
+      <div style={{ background:`linear-gradient(135deg, ${T.forest} 0%, #1a3320 100%)`, padding:'40px 20px 36px', position:'relative', overflow:'hidden' }}>
+        <div style={{ position:'absolute', top:-60, right:-60, width:200, height:200, borderRadius:'50%', background:'rgba(255,255,255,0.04)', pointerEvents:'none' }}/>
+        <div style={{ position:'absolute', bottom:-40, left:-40, width:160, height:160, borderRadius:'50%', background:'rgba(255,255,255,0.03)', pointerEvents:'none' }}/>
+        <div style={{ position:'relative', zIndex:1, maxWidth:700, margin:'0 auto', textAlign:'center' }}>
+          <div style={{ display:'inline-flex', alignItems:'center', gap:8, background:'rgba(255,255,255,0.1)', borderRadius:100, padding:'6px 16px', marginBottom:20 }}>
+            <span style={{ width:6, height:6, borderRadius:'50%', background:'#C9A84C', display:'block' }}/>
+            <span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.75rem', color:'rgba(255,255,255,0.8)', letterSpacing:'0.1em', textTransform:'uppercase', fontWeight:500 }}>Handcrafted with love</span>
+          </div>
+          <h1 style={{ fontFamily:'"Playfair Display",serif', fontSize:'clamp(2rem,6vw,3.5rem)', fontWeight:900, color:'#fff', lineHeight:1.1, letterSpacing:'-0.02em', marginBottom:16 }}>
+            Artisan Bazaar
+          </h1>
+          <p style={{ fontFamily:'"Crimson Pro",serif', fontSize:'clamp(1rem,2.5vw,1.2rem)', color:'rgba(255,255,255,0.7)', lineHeight:1.7, maxWidth:480, margin:'0 auto 28px', fontStyle:'italic' }}>
+            A curated marketplace of authentic handcrafted goods, made with care by skilled artisans across India.
+          </p>
+          <div style={{ display:'flex', justifyContent:'center', gap:8, flexWrap:'wrap', marginBottom:24 }}>
+            {[[`${products.length > 0 ? products.length : '70'}+`,'Products'],['500+','Artisans']].map(([v,l]) => (
+              <div key={l} style={{ background:'rgba(255,255,255,0.1)', borderRadius:12, padding:'12px 20px', backdropFilter:'blur(4px)', border:'1px solid rgba(255,255,255,0.12)' }}>
+                <p style={{ fontFamily:'"Playfair Display",serif', fontSize:'1.3rem', fontWeight:700, color:'#fff', lineHeight:1, marginBottom:3 }}>{v}</p>
+                <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.68rem', color:'rgba(255,255,255,0.6)', letterSpacing:'0.08em', textTransform:'uppercase' }}>{l}</p>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
 
-      {productRevenue.length > 0 && (
-        <div>
-          <p style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.72rem', fontWeight: 600, color: T.inkL, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>
-            Top Products by Revenue
-          </p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {productRevenue.slice(0, 5).map((p, i) => (
-              <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 12, background: T.offwhite, borderRadius: 12, padding: '10px 12px', border: `1px solid ${T.line}` }}>
-                <span style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.78rem', fontWeight: 700, color: T.inkL, width: 20, textAlign: 'center' }}>#{i + 1}</span>
-                <img src={p.imageUrl} alt={p.name} style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 8, flexShrink: 0 }}/>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ fontFamily: '"Playfair Display",serif', fontStyle: 'italic', fontSize: '0.82rem', color: T.ink, margin: 0, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{p.name}</p>
-                  <p style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.7rem', color: T.inkL, margin: 0 }}>₹{p.price} each</p>
+      <div style={{ background:T.white, borderBottom:`1px solid ${T.line}`, padding:'12px 16px', overflowX:'auto', position:'sticky', top:60, zIndex:50 }} className="scrollbar-hide">
+        <div style={{ display:'flex', gap:8, minWidth:'max-content' }}>
+          {(['All',...CATEGORIES] as (Category|'All')[]).map(cat => {
+            const m = CAT_META[cat]; const active = selectedCat===cat;
+            return (
+              <button key={cat} onClick={()=>setSelectedCat(cat)}
+                style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 16px', borderRadius:100, border:`1.5px solid ${active?m.color:T.line}`, background:active?m.bg:T.paper, color:active?m.color:T.inkL, fontFamily:'"Inter",sans-serif', fontSize:'0.78rem', fontWeight:active?600:400, cursor:'pointer', whiteSpace:'nowrap', transition:'all .15s' }}>
+                <span style={{ fontSize:'0.9rem' }}>{m.emoji}</span> {m.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div style={{ maxWidth:1200, margin:'0 auto', padding:'24px 16px 40px' }}>
+        {selectedCat!=='All' && (
+          <motion.div initial={{opacity:0,y:-8}} animate={{opacity:1,y:0}} style={{ marginBottom:24 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:12, padding:'20px', background:T.white, borderRadius:16, border:`1px solid ${T.line}`, boxShadow:`0 2px 8px ${T.shadow}` }}>
+              <span style={{ fontSize:'2rem' }}>{CAT_META[selectedCat].emoji}</span>
+              <div>
+                <h2 style={{ fontFamily:'"Playfair Display",serif', fontSize:'1.3rem', fontWeight:700, color:T.ink, marginBottom:4 }}>{CAT_META[selectedCat].label}</h2>
+                <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.78rem', color:T.inkL }}>{products.length} items available</p>
+              </div>
+            </div>
+          </motion.div>
+        )}
+        {loading ? <Spinner label="Discovering handcrafted wares…" T={T}/> : products.length===0 ? (
+          <div style={{ textAlign:'center', padding:'80px 20px' }}>
+            <div style={{ fontSize:'3rem', marginBottom:16 }}>🌿</div>
+            <p style={{ fontFamily:'"Playfair Display",serif', fontSize:'1.2rem', color:T.inkM, fontStyle:'italic' }}>No items found</p>
+            <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.85rem', color:T.inkL, marginTop:8 }}>Try a different category or search term</p>
+          </div>
+        ) : (
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(2, 1fr)', gap:12 }} className="products-grid">
+            <style>{`@media(min-width:600px){.products-grid{grid-template-columns:repeat(auto-fill,minmax(200px,1fr))!important;gap:20px!important;}}`}</style>
+            {products.map((p,i) => (
+              <motion.div key={p.id} initial={{opacity:0,y:20}} animate={{opacity:1,y:0}} transition={{delay:Math.min(i*.04,.6)}}
+                className="card-hover" onClick={()=>onProduct(p)}
+                style={{ background:T.white, borderRadius:14, overflow:'hidden', cursor:'pointer', boxShadow:`0 2px 10px ${T.shadow}`, border:`1px solid ${T.line}` }}>
+                <div style={{ aspectRatio:'1', overflow:'hidden', position:'relative', background:T.paper }}>
+                  <img src={p.imageUrl} alt={p.name} style={{ width:'100%', height:'100%', objectFit:'cover', transition:'transform .4s' }}
+                    onMouseEnter={e=>(e.currentTarget as HTMLImageElement).style.transform='scale(1.06)'}
+                    onMouseLeave={e=>(e.currentTarget as HTMLImageElement).style.transform='scale(1)'}/>
+                  <div style={{ position:'absolute', top:8, left:8, background:'rgba(255,255,255,0.9)', borderRadius:100, padding:'2px 8px', backdropFilter:'blur(4px)' }}>
+                    <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.58rem', fontWeight:600, color:T.inkM, letterSpacing:'0.06em' }}>{p.category}</p>
+                  </div>
                 </div>
-                <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                  <p style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.82rem', fontWeight: 700, color: T.forest, margin: 0 }}>₹{p.revenue.toFixed(0)}</p>
-                  <p style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.62rem', color: T.inkL, margin: 0 }}>revenue</p>
+                <div style={{ padding:'10px 12px' }}>
+                  <h3 style={{ fontFamily:'"Playfair Display",serif', fontStyle:'italic', fontSize:'0.88rem', fontWeight:600, color:T.ink, marginBottom:3, lineHeight:1.3, ...clamp(2) }}>{p.name}</h3>
+                  <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.68rem', color:T.inkL, marginBottom:8 }}>by {p.sellerName}</p>
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                    <span style={{ fontFamily:'"Playfair Display",serif', fontSize:'1rem', fontWeight:700, color:T.ink }}>₹{p.price}</span>
+                    <button onClick={e=>{ e.stopPropagation(); onAddToCart(p); }}
+                      style={{ display:'flex', alignItems:'center', gap:4, padding:'6px 10px', background:T.forest, color:'#fff', border:'none', borderRadius:7, fontFamily:'"Inter",sans-serif', fontSize:'0.68rem', fontWeight:600, cursor:'pointer' }}>
+                      <ShoppingCart size={11}/> Add
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── PRODUCT DETAIL ─────────────────────────────────────────
+function ProductDetailView({ product:init, onProduct, isOwn, onAddToCart, showToast, T }:
+  { product:Product; onProduct:(p:Product)=>void; isOwn:boolean; onAddToCart:(p:Product,qty:number)=>void; showToast:(m:string,t?:'success'|'error')=>void; T:Tokens }) {
+  const [product, setProduct] = useState<Product>(init);
+  const [related, setRelated] = useState<Product[]>([]);
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [avgRating, setAvgRating] = useState<string|null>(null);
+  const [qty, setQty] = useState(1);
+  const [cartDone, setCartDone] = useState(false);
+
+  useEffect(() => {
+    Promise.all([api.products.get(product.id) as Promise<ProductDetail>, api.reviews.forProduct(product.id) as Promise<ReviewsResponse>])
+      .then(([d,r]) => { setProduct(d); setRelated(d.related??[]); setReviews(r.data); setAvgRating(r.avgRating); })
+      .catch(()=>{});
+  }, [product.id]);
+
+  const rating = parseFloat(avgRating??product.rating?.toString()??'4.5');
+
+  return (
+    <div style={{ background:T.offwhite }}>
+      <div style={{ padding:'12px 20px', display:'flex', alignItems:'center', gap:6, fontSize:'0.78rem', color:T.inkL, fontFamily:'"Inter",sans-serif', overflowX:'auto', background:T.white, borderBottom:`1px solid ${T.line}` }} className="scrollbar-hide">
+        <span style={{ color:T.forest, cursor:'pointer', whiteSpace:'nowrap' }}>Home</span>
+        <ChevronRight size={12}/>
+        <span style={{ color:T.forest, cursor:'pointer', whiteSpace:'nowrap' }}>{product.category}</span>
+        <ChevronRight size={12}/>
+        <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{product.name}</span>
+      </div>
+
+      <div className="product-split" style={{ display:'grid', gridTemplateColumns:'50% 50%', minHeight:'70vh', maxWidth:1100, margin:'0 auto' }}>
+        <div className="product-split-img" style={{ padding:'24px', position:'sticky', top:70, alignSelf:'start', borderRight:`1px solid ${T.line}` }}>
+          <div style={{ borderRadius:16, overflow:'hidden', boxShadow:`0 8px 32px ${T.shadowM}` }}>
+            <img src={product.imageUrl} alt={product.name} style={{ width:'100%', aspectRatio:'1', objectFit:'cover', display:'block' }}/>
+          </div>
+        </div>
+
+        <div style={{ padding:'28px 24px', display:'flex', flexDirection:'column', gap:20 }}>
+          <div style={{ display:'inline-flex', alignItems:'center', gap:6, background:CAT_META[product.category]?.bg??T.paper, borderRadius:100, padding:'5px 14px', width:'fit-content' }}>
+            <span style={{ fontSize:'0.85rem' }}>{CAT_META[product.category]?.emoji}</span>
+            <span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', fontWeight:600, color:CAT_META[product.category]?.color??T.inkM, letterSpacing:'0.06em' }}>{product.category}</span>
+          </div>
+          <div>
+            <h1 style={{ fontFamily:'"Playfair Display",serif', fontStyle:'italic', fontSize:'clamp(1.4rem,3vw,2rem)', fontWeight:700, color:T.ink, lineHeight:1.2, marginBottom:12 }}>{product.name}</h1>
+            {reviews.length > 0 && (
+              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                <div style={{ display:'flex', gap:2 }}>
+                  {[1,2,3,4,5].map(s => <Star key={s} size={14} fill={s<=Math.round(rating)?'#C9A84C':'none'} color={s<=Math.round(rating)?'#C9A84C':T.lineD}/>)}
+                </div>
+                <span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', fontWeight:600, color:T.inkM }}>{rating.toFixed(1)}</span>
+                <span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.78rem', color:T.inkL }}>({reviews.length} reviews)</span>
+              </div>
+            )}
+          </div>
+
+          <div style={{ background:T.paper, borderRadius:14, padding:'18px 20px', display:'flex', alignItems:'center', gap:20 }}>
+            <div>
+              <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', color:T.inkL, marginBottom:4, fontWeight:500 }}>PRICE</p>
+              <p style={{ fontFamily:'"Playfair Display",serif', fontSize:'2rem', fontWeight:700, color:T.ink, lineHeight:1 }}>₹{product.price}</p>
+            </div>
+            <div style={{ height:48, width:1, background:T.line }}/>
+            <div style={{ marginLeft:'auto', fontFamily:'"Inter",sans-serif', fontSize:'0.78rem', color:'#2D7A2D', fontWeight:600, display:'flex', alignItems:'center', gap:4 }}>
+              <span style={{ width:8, height:8, borderRadius:'50%', background:'#2D7A2D', display:'block' }}/>
+              In Stock
+            </div>
+          </div>
+
+          <div style={{ display:'flex', alignItems:'center', gap:14, padding:'14px 16px', background:T.white, borderRadius:14, border:`1px solid ${T.line}` }}>
+            <div style={{ width:44, height:44, borderRadius:'50%', background:T.forest, display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontFamily:'"Playfair Display",serif', fontSize:'1.1rem', fontWeight:700, flexShrink:0 }}>{product.sellerName[0]}</div>
+            <div style={{ flex:1, minWidth:0 }}>
+              <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.7rem', color:T.inkL, marginBottom:3, fontWeight:500, textTransform:'uppercase', letterSpacing:'0.06em' }}>Craftsperson</p>
+              <p style={{ fontFamily:'"Playfair Display",serif', fontStyle:'italic', fontSize:'1rem', color:T.ink }}>{product.sellerName}</p>
+            </div>
+            <div style={{ display:'flex', alignItems:'center', gap:5, background:T.forestXL, borderRadius:8, padding:'5px 10px' }}>
+              <Award size={12} color={T.forest}/><span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.68rem', color:T.forest, fontWeight:600 }}>Verified</span>
+            </div>
+          </div>
+
+          <div style={{ display:'flex', flexDirection:'column', gap:10, padding:'14px 16px', background:T.offwhite, borderRadius:14, border:`1px solid ${T.line}` }}>
+            {([[<Truck size={14}/>, 'Free delivery on orders above ₹50'],[<Clock size={14}/>, 'Ships in 3–5 business days'],[<Shield size={14}/>, '7-day easy returns']] as [React.ReactNode,string][]).map(([icon,text],i) => (
+              <div key={i} style={{ display:'flex', alignItems:'center', gap:10 }}>
+                <span style={{ color:T.forest, flexShrink:0 }}>{icon}</span>
+                <span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', color:T.inkM }}>{text}</span>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display:'flex', alignItems:'center', gap:14 }}>
+            <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.78rem', fontWeight:600, color:T.inkL, textTransform:'uppercase', letterSpacing:'0.08em' }}>Quantity</p>
+            <div style={{ display:'flex', alignItems:'center', background:T.paper, borderRadius:10, border:`1px solid ${T.line}`, overflow:'hidden' }}>
+              <button onClick={()=>setQty(q=>Math.max(1,q-1))} style={{ width:38, height:38, border:'none', background:'transparent', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:T.inkM }}><Minus size={14}/></button>
+              <span style={{ width:44, textAlign:'center', fontFamily:'"Inter",sans-serif', fontSize:'0.95rem', fontWeight:700, color:T.ink, borderLeft:`1px solid ${T.line}`, borderRight:`1px solid ${T.line}`, lineHeight:'38px' }}>{qty}</span>
+              <button onClick={()=>setQty(q=>q+1)} style={{ width:38, height:38, border:'none', background:'transparent', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:T.inkM }}><Plus size={14}/></button>
+            </div>
+          </div>
+
+          {!isOwn ? (
+            <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+              <button onClick={()=>{ setCartDone(true); setTimeout(()=>setCartDone(false),2000); onAddToCart(product,qty); }}
+                style={{ padding:'13px', background:cartDone?'#2D7A2D':T.forest, color:'#fff', border:'none', borderRadius:12, fontFamily:'"Inter",sans-serif', fontSize:'0.88rem', fontWeight:600, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:8, transition:'background .2s' }}>
+                <ShoppingCart size={16}/> {cartDone?'✓ Added to Basket':'Add to Basket'}
+              </button>
+              <button onClick={()=>{ onAddToCart(product,qty); showToast('Added to basket!'); }}
+                style={{ padding:'13px', background:T.white, color:T.forest, border:`2px solid ${T.forest}`, borderRadius:12, fontFamily:'"Inter",sans-serif', fontSize:'0.88rem', fontWeight:600, cursor:'pointer' }}>
+                Buy Now · ₹{(product.price*qty).toFixed(2)}
+              </button>
+            </div>
+          ) : (
+            <div style={{ padding:'14px', background:T.forestXL, borderRadius:12, textAlign:'center', fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', color:T.forest, fontWeight:600 }}>✦ This is your listing</div>
+          )}
+
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10 }}>
+            {[{icon:<Shield size={18}/>,t:'Secure',d:'SSL checkout'},{icon:<RefreshCw size={18}/>,t:'Returns',d:'7 days'},{icon:<Package size={18}/>,t:'Gift Wrap',d:'Free'}].map(({icon,t,d}) => (
+              <div key={t} style={{ background:T.paper, borderRadius:12, padding:'12px 8px', textAlign:'center', border:`1px solid ${T.line}` }}>
+                <div style={{ color:T.forest, display:'flex', justifyContent:'center', marginBottom:6 }}>{icon}</div>
+                <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.68rem', fontWeight:600, color:T.inkM }}>{t}</p>
+                <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.64rem', color:T.inkL, marginTop:2 }}>{d}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ padding:'32px 24px', borderTop:`1px solid ${T.line}`, background:T.white }}>
+        <div style={{ maxWidth:800, margin:'0 auto' }}>
+          <h2 style={{ fontFamily:'"Playfair Display",serif', fontSize:'1.2rem', fontWeight:700, color:T.ink, marginBottom:16 }}>About This Piece</h2>
+          <p style={{ fontFamily:'"Crimson Pro",serif', fontSize:'1.05rem', lineHeight:1.9, color:T.inkM }}>{product.description}</p>
+          <div style={{ marginTop:24, display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))', gap:12 }}>
+            {[['Material','Natural'],['Craft','Handmade'],['Origin','India'],['Condition','New']].map(([k,v]) => (
+              <div key={k} style={{ padding:'12px 14px', background:T.paper, borderRadius:10, border:`1px solid ${T.line}` }}>
+                <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.68rem', color:T.inkL, fontWeight:600, textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:4 }}>{k}</p>
+                <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.88rem', fontWeight:600, color:T.ink }}>{v}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {reviews.length>0 && (
+        <div style={{ padding:'32px 24px', borderTop:`1px solid ${T.line}` }}>
+          <div style={{ maxWidth:800, margin:'0 auto' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:24, flexWrap:'wrap' }}>
+              <h2 style={{ fontFamily:'"Playfair Display",serif', fontSize:'1.2rem', fontWeight:700, color:T.ink }}>Customer Reviews</h2>
+              <div style={{ display:'flex', alignItems:'center', gap:6, background:T.paper, borderRadius:100, padding:'4px 12px' }}>
+                <Star size={13} fill='#C9A84C' color='#C9A84C'/>
+                <span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.78rem', fontWeight:700, color:T.ink }}>{avgRating??'4.5'}</span>
+                <span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', color:T.inkL }}>({reviews.length})</span>
+              </div>
+            </div>
+            <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+              {reviews.map(r => (
+                <div key={r.id} style={{ padding:'18px 20px', background:T.white, borderRadius:14, border:`1px solid ${T.line}` }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10, flexWrap:'wrap' }}>
+                    <div style={{ width:36, height:36, borderRadius:'50%', background:T.forest, display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontFamily:'"Inter",sans-serif', fontSize:'0.8rem', fontWeight:700 }}>{r.buyerName[0]}</div>
+                    <div>
+                      <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', fontWeight:600, color:T.ink, marginBottom:3 }}>{r.buyerName}</p>
+                      <div style={{ display:'flex', gap:2 }}>{[1,2,3,4,5].map(s=><Star key={s} size={11} fill={s<=r.rating?'#C9A84C':'none'} color={s<=r.rating?'#C9A84C':T.lineD}/>)}</div>
+                    </div>
+                    <span style={{ marginLeft:'auto', fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', color:T.inkL }}>{new Date(r.createdAt).toLocaleDateString('en-IN',{year:'numeric',month:'short',day:'numeric'})}</span>
+                  </div>
+                  {r.comment && <p style={{ fontFamily:'"Crimson Pro",serif', fontSize:'0.95rem', color:T.inkM, lineHeight:1.7, fontStyle:'italic' }}>"{r.comment}"</p>}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {related.length>0 && (
+        <div style={{ padding:'32px 24px 48px', borderTop:`1px solid ${T.line}`, background:T.offwhite }}>
+          <h2 style={{ fontFamily:'"Playfair Display",serif', fontSize:'1.2rem', fontWeight:700, color:T.ink, marginBottom:20 }}>More from {product.category}</h2>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(180px,1fr))', gap:16 }}>
+            {related.map(p => (
+              <div key={p.id} className="card-hover" onClick={()=>onProduct(p)} style={{ background:T.white, borderRadius:14, overflow:'hidden', cursor:'pointer', boxShadow:`0 2px 10px ${T.shadow}`, border:`1px solid ${T.line}` }}>
+                <div style={{ aspectRatio:'4/3', overflow:'hidden' }}>
+                  <img src={p.imageUrl} alt={p.name} style={{ width:'100%', height:'100%', objectFit:'cover', transition:'transform .35s' }}/>
+                </div>
+                <div style={{ padding:'12px 14px' }}>
+                  <h3 style={{ fontFamily:'"Playfair Display",serif', fontStyle:'italic', fontSize:'0.88rem', color:T.ink, marginBottom:6, ...clamp(2) }}>{p.name}</h3>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                    <span style={{ fontFamily:'"Playfair Display",serif', fontSize:'1rem', fontWeight:700, color:T.ink }}>₹{p.price}</span>
+                    <span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', color:T.inkL }}>{p.sellerName}</span>
+                  </div>
                 </div>
               </div>
             ))}
@@ -1525,400 +1168,437 @@ export function SalesDashboard({ products, orders, T }: { products: Product[]; o
   );
 }
 
-// ─────────────────────────────────────────────────────────────────
-//  INVOICE PDF
-// ─────────────────────────────────────────────────────────────────
+// ── SELL VIEW ──────────────────────────────────────────────
+function SellView({ onAdd, T }:{ onAdd:(p:Partial<Product>)=>Promise<void>; T:Tokens }) {
+  const [f, setF] = useState({ name:'', description:'', price:'', category:'Other' as Category, imageUrl:'' });
+  const [submitting, setSubmitting] = useState(false);
+  const inp:React.CSSProperties = { width:'100%', marginTop:6, padding:'11px 14px', background:T.offwhite, border:`1.5px solid ${T.line}`, borderRadius:10, fontSize:'0.9rem', outline:'none', color:T.ink, fontFamily:'"Inter",sans-serif', transition:'border-color .2s' };
+  const lbl:React.CSSProperties = { fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.08em', color:T.inkL };
 
-export function downloadInvoice(order: Order) {
-  const html = `
-<!DOCTYPE html><html><head>
-<meta charset="utf-8"/>
-<title>Invoice ${order.id}</title>
-<style>
-  body{font-family:Georgia,serif;max-width:600px;margin:40px auto;color:#1C1410;}
-  h1{font-size:2rem;color:#2D4A2D;margin:0 0 4px;}
-  .sub{font-size:.85rem;color:#7A6E64;margin:0 0 32px;}
-  table{width:100%;border-collapse:collapse;margin:20px 0;}
-  th{text-align:left;font-size:.75rem;text-transform:uppercase;letter-spacing:.08em;color:#7A6E64;border-bottom:2px solid #E2DDD5;padding:8px 0;}
-  td{padding:10px 0;border-bottom:1px solid #E2DDD5;font-size:.9rem;}
-  .total{font-size:1.1rem;font-weight:bold;}
-  @media print{body{margin:20px;}}
-</style>
-</head><body>
-<h1>🌿 Artisan Bazaar</h1>
-<p class="sub">Invoice · ${order.id}</p>
-<hr/>
-<p style="font-size:.85rem;color:#7A6E64">Date: ${new Date(order.date).toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'})}</p>
-<p style="font-size:.85rem;color:#7A6E64">Delivery: ${order.address}</p>
-<p style="font-size:.85rem;color:#7A6E64">Payment: ${order.paymentMethod === 'cod' ? 'Cash on Delivery' : 'Razorpay'}</p>
-<table>
-<tr><th>Item</th><th>Seller</th><th style="text-align:right">Qty</th><th style="text-align:right">Price</th></tr>
-${order.items.map(i => `<tr><td>${i.name}</td><td style="color:#7A6E64;font-size:.82rem">${i.sellerName}</td><td style="text-align:right">${i.qty}</td><td style="text-align:right">₹${(i.price*i.qty).toFixed(2)}</td></tr>`).join('')}
-<tr><td colspan="3" class="total" style="text-align:right;padding-top:16px">Total</td><td class="total" style="text-align:right;padding-top:16px">₹${order.total.toFixed(2)}</td></tr>
-</table>
-<p style="font-size:.8rem;color:#7A6E64;text-align:center;margin-top:40px">Thank you for supporting Indian artisans 🌿</p>
-</body></html>`;
-
-  const w = window.open('', '_blank');
-  if (!w) return;
-  w.document.write(html);
-  w.document.close();
-  setTimeout(() => w.print(), 400);
-}
-
-export function InvoiceButton({ order, T }: { order: Order; T: Tokens }) {
-  return (
-    <button
-      onClick={() => downloadInvoice(order)}
-      style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', background: T.paper, color: T.inkM, border: `1px solid ${T.line}`, borderRadius: 8, fontFamily: '"Inter",sans-serif', fontSize: '0.78rem', fontWeight: 500, cursor: 'pointer' }}>
-      <Download size={13}/> Download Invoice
-    </button>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────
-//  ADMIN — USER MANAGEMENT TAB
-// ─────────────────────────────────────────────────────────────────
-
-interface DemoUser {
-  id: string; name: string; email: string;
-  role: 'seller' | 'buyer'; products: number; joinDate: string;
-}
-
-const DEMO_USERS: DemoUser[] = [
-  { id:'u1', name:'Priya Sharma',  email:'priya@test.com',  role:'seller', products:4, joinDate:'2024-01-15' },
-  { id:'u2', name:'Rahul Verma',   email:'rahul@test.com',  role:'buyer',  products:0, joinDate:'2024-02-20' },
-  { id:'u3', name:'Ananya Craft',  email:'ananya@test.com', role:'seller', products:7, joinDate:'2024-03-05' },
-];
-
-export function UserManagementTab({
-  T, showToast,
-}: {
-  T: Tokens;
-  showToast: (m: string, t?: 'success' | 'error') => void;
-}) {
-  const [banned, setBanned] = useState<Set<string>>(new Set());
-  const [search, setSearch] = useState('');
-
-  const filtered = DEMO_USERS.filter(u =>
-    u.name.toLowerCase().includes(search.toLowerCase()) ||
-    u.email.toLowerCase().includes(search.toLowerCase())
-  );
+  const handle = async () => {
+    if (!f.name||!f.price||!f.imageUrl) return;
+    setSubmitting(true);
+    try { await onAdd({...f,price:Number(f.price)}); } finally { setSubmitting(false); }
+  };
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-        <Users size={18} color={T.forest}/>
-        <h3 style={{ fontFamily: '"Playfair Display",serif', fontSize: '1.1rem', fontWeight: 700, color: T.ink }}>User Management</h3>
+      <div style={{ textAlign:'center', marginBottom:32 }}>
+        <div style={{ width:56, height:56, background:T.forest, borderRadius:16, display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 16px' }}><Leaf size={28} color="#fff"/></div>
+        <h2 style={{ fontFamily:'"Playfair Display",serif', fontSize:'1.8rem', fontWeight:700, color:T.ink, marginBottom:8 }}>List Your Craft</h2>
+        <p style={{ fontFamily:'"Crimson Pro",serif', fontStyle:'italic', color:T.inkL, fontSize:'1rem' }}>Share your handmade wares with the world</p>
       </div>
-      <div style={{ position: 'relative', marginBottom: 16 }}>
-        <input
-          type="text" placeholder="Search users…" value={search}
-          onChange={e => setSearch(e.target.value)}
-          style={{ width: '100%', padding: '10px 14px', background: T.white, border: `1.5px solid ${T.line}`, borderRadius: 10, fontSize: '0.85rem', color: T.ink, fontFamily: '"Inter",sans-serif', outline: 'none' }}/>
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {filtered.map(u => {
-          const isBanned = banned.has(u.id);
-          return (
-            <div key={u.id} style={{ background: T.white, borderRadius: 12, padding: '12px 16px', border: `1px solid ${isBanned ? T.rust : T.line}`, display: 'flex', alignItems: 'center', gap: 14, opacity: isBanned ? 0.6 : 1 }}>
-              <div style={{ width: 40, height: 40, borderRadius: '50%', background: u.role === 'seller' ? T.forestXL : T.paper, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <span style={{ fontFamily: '"Playfair Display",serif', fontSize: '1rem', fontWeight: 700, color: u.role === 'seller' ? T.forest : T.inkM }}>
-                  {u.name[0]}
-                </span>
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                  <p style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.85rem', fontWeight: 600, color: T.ink, margin: 0 }}>{u.name}</p>
-                  <span style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.62rem', fontWeight: 600, color: u.role === 'seller' ? T.forest : T.inkL, background: u.role === 'seller' ? T.forestXL : T.paper, padding: '1px 6px', borderRadius: 100, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                    {u.role}
-                  </span>
-                  {isBanned && <span style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.62rem', fontWeight: 600, color: T.rust, background: '#FFE8E5', padding: '1px 6px', borderRadius: 100 }}>BANNED</span>}
-                </div>
-                <p style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.72rem', color: T.inkL, margin: 0 }}>
-                  {u.email} · {u.role === 'seller' ? `${u.products} products` : 'Buyer'} · Joined {new Date(u.joinDate).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}
-                </p>
-              </div>
-              <button
-                onClick={() => {
-                  setBanned(prev => { const next = new Set(prev); next.has(u.id) ? next.delete(u.id) : next.add(u.id); return next; });
-                  showToast(isBanned ? `${u.name} unbanned` : `${u.name} banned`, isBanned ? 'success' : 'error');
-                }}
-                style={{ padding: '6px 12px', background: isBanned ? T.forestXL : '#FFF0EE', color: isBanned ? T.forest : T.rust, border: `1px solid ${isBanned ? T.forest : T.rust}`, borderRadius: 8, fontFamily: '"Inter",sans-serif', fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>
-                {isBanned ? 'Unban' : 'Ban'}
-              </button>
+      <div style={{ background:T.white, borderRadius:20, padding:'28px', boxShadow:`0 4px 24px ${T.shadow}`, border:`1px solid ${T.line}` }}>
+        <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+          <div><label style={lbl}>Item Name *</label><input type="text" placeholder="e.g. Hand-carved Wooden Bowl" value={f.name} onChange={e=>setF({...f,name:e.target.value})} style={inp}/></div>
+          <div>
+            <label style={lbl}>Product Photo *</label>
+            <div style={{ marginTop:8 }}><ImageUploader value={f.imageUrl} onChange={url=>setF({...f,imageUrl:url})} T={T}/></div>
+          </div>
+          <div className="sell-grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
+            <div><label style={lbl}>Price (₹) *</label><input type="number" placeholder="0.00" value={f.price} onChange={e=>setF({...f,price:e.target.value})} style={inp}/></div>
+            <div><label style={lbl}>Category</label>
+              <select value={f.category} onChange={e=>setF({...f,category:e.target.value as Category})} style={inp}>
+                {CATEGORIES.map(c=><option key={c}>{c}</option>)}
+              </select>
             </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────
-//  ADMIN — REVENUE ANALYTICS TAB
-// ✅ FIX 5: Math.random() moved into useMemo so it's stable
-// ─────────────────────────────────────────────────────────────────
-
-import { useMemo } from 'react';
-
-export function RevenueAnalyticsTab({ products, T }: { products: Product[]; T: Tokens }) {
-  // ✅ FIX 5: stable random data — computed once per mount
-  const days = useMemo(() => {
-    return Array.from({ length: 7 }, (_, i) => {
-      const d = new Date(); d.setDate(d.getDate() - (6 - i));
-      return {
-        label:   d.toLocaleDateString('en-IN', { weekday: 'short' }),
-        revenue: Math.floor(Math.random() * 5000) + 500,
-      };
-    });
-  }, []); // empty deps = computed once
-
-  const maxRev  = Math.max(...days.map(d => d.revenue));
-  const totalRev = days.reduce((s, d) => s + d.revenue, 0);
-
-  const catRevenue = ['Jewelry','Home Decor','Clothing','Art','Toys','Gifts','Other'].map(cat => ({
-    cat,
-    count: products.filter(p => p.category === cat).length,
-    pct:   Math.round(products.filter(p => p.category === cat).length / Math.max(products.length, 1) * 100),
-  }));
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: -8 }}>
-        <BarChart2 size={18} color={T.forest}/>
-        <h3 style={{ fontFamily: '"Playfair Display",serif', fontSize: '1.1rem', fontWeight: 700, color: T.ink }}>Revenue Analytics</h3>
-      </div>
-
-      <div style={{ background: T.white, borderRadius: 14, padding: '20px', border: `1px solid ${T.line}` }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 20 }}>
-          <p style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.72rem', fontWeight: 600, color: T.inkL, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Last 7 Days</p>
-          <p style={{ fontFamily: '"Playfair Display",serif', fontSize: '1.2rem', fontWeight: 700, color: T.forest }}>₹{totalRev.toLocaleString()}</p>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 100 }}>
-          {days.map(d => (
-            <div key={d.label} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-              <div style={{ width: '100%', background: T.forest, borderRadius: '4px 4px 0 0', height: `${Math.round((d.revenue / maxRev) * 80)}px`, minHeight: 4, transition: 'height .3s' }}/>
-              <p style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.6rem', color: T.inkL }}>{d.label}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div style={{ background: T.white, borderRadius: 14, padding: '20px', border: `1px solid ${T.line}` }}>
-        <p style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.72rem', fontWeight: 600, color: T.inkL, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 16 }}>Products by Category</p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {catRevenue.filter(c => c.count > 0).map(c => (
-            <div key={c.cat}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                <span style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.78rem', color: T.inkM }}>{c.cat}</span>
-                <span style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.72rem', color: T.inkL }}>{c.count} items · {c.pct}%</span>
-              </div>
-              <div style={{ height: 6, background: T.paper, borderRadius: 3, overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${c.pct}%`, background: T.forest, borderRadius: 3, transition: 'width .4s ease' }}/>
-              </div>
-            </div>
-          ))}
+          </div>
+          <div><label style={lbl}>Description</label><textarea rows={4} placeholder="Tell buyers about your craft, materials used, size, etc." value={f.description} onChange={e=>setF({...f,description:e.target.value})} style={{...inp,resize:'vertical'}}/></div>
+          <button onClick={handle} disabled={submitting||!f.imageUrl||!f.name||!f.price}
+            style={{ padding:'14px', background:(submitting||!f.imageUrl||!f.name||!f.price)?T.lineD:T.forest, color:'#fff', border:'none', borderRadius:12, fontFamily:'"Inter",sans-serif', fontSize:'0.9rem', fontWeight:600, cursor:(submitting||!f.imageUrl||!f.name||!f.price)?'not-allowed':'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+            {submitting?<><Loader2 size={16} style={{animation:'spin 1s linear infinite'}}/> Publishing…</>:<>Publish Listing <ArrowRight size={16}/></>}
+          </button>
         </div>
       </div>
     </div>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────
-//  ADMIN — REPORTED PRODUCTS TAB
-// ─────────────────────────────────────────────────────────────────
+// ── PROFILE VIEW ───────────────────────────────────────────
+function ProfileView({ user, onProduct, onLogout, T }:{ user:AppUser; onProduct:(p:Product)=>void; onLogout:()=>void; T:Tokens }) {
+  const [myProducts, setMyProducts] = useState<Product[]>([]);
+  const [loading, setLoading]       = useState(true);
+  const [deletingId, setDeletingId] = useState<string|null>(null);
+  const [confirmId, setConfirmId]   = useState<string|null>(null);
+  const isSeller = user.role==='seller';
 
-export function ReportedProductsTab({
-  products, T, showToast, onRemove,
-}: {
-  products: Product[];
-  T: Tokens;
-  showToast: (m: string, t?: 'success' | 'error') => void;
-  onRemove: (id: string) => void;
-}) {
-  // ✅ stable — computed once, not on every render
-  const initialReported = useMemo(() =>
-    products.slice(0, 3).map((p, i) => ({
-      ...p,
-      reason:  'Fake/counterfeit item',
-      reports: (i % 3) + 1, // deterministic, no Math.random()
-    })), [products]);
+  useEffect(() => {
+    setLoading(true);
+    if (isSeller&&user.id) api.products.bySeller(user.id).then(r=>setMyProducts(r.data)).catch(()=>{}).finally(()=>setLoading(false));
+    else setLoading(false);
+  }, [user.id,isSeller]);
 
-  const [reported,   setReported]   = useState(initialReported);
-  const [dismissed,  setDismissed]  = useState<Set<string>>(new Set());
-
-  const dismiss = (id: string) => { setDismissed(prev => new Set([...prev, id])); showToast('Report dismissed'); };
-  const remove  = (id: string) => { setReported(r => r.filter(p => p.id !== id)); onRemove(id); showToast('Product removed', 'error'); };
-
-  const visible = reported.filter(p => !dismissed.has(p.id));
+  const handleDelete = async (pid:string, e:React.MouseEvent) => {
+    e.stopPropagation();
+    if (confirmId!==pid) { setConfirmId(pid); return; }
+    setDeletingId(pid); setConfirmId(null);
+    try { await api.products.delete(pid); setMyProducts(p=>p.filter(x=>x.id!==pid)); }
+    catch {} finally { setDeletingId(null); }
+  };
 
   return (
-    <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-        <Flag size={18} color={T.rust}/>
-        <h3 style={{ fontFamily: '"Playfair Display",serif', fontSize: '1.1rem', fontWeight: 700, color: T.ink }}>Reported Products</h3>
-        {visible.length > 0 && (
-          <span style={{ background: T.rust, color: '#fff', borderRadius: '50%', width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: '"Inter",sans-serif', fontSize: '0.65rem', fontWeight: 700 }}>
-            {visible.length}
-          </span>
-        )}
+    <div style={{ maxWidth:960, margin:'0 auto' }}>
+      <div style={{ background:T.white, borderRadius:20, padding:'28px', marginBottom:28, boxShadow:`0 4px 24px ${T.shadow}`, border:`1px solid ${T.line}`, display:'flex', alignItems:'center', gap:20, flexWrap:'wrap' }}>
+        <div style={{ width:72, height:72, borderRadius:'50%', background:T.forest, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+          <User size={36} color="#fff"/>
+        </div>
+        <div style={{ flex:1, minWidth:0 }}>
+          <h2 style={{ fontFamily:'"Playfair Display",serif', fontSize:'1.5rem', fontWeight:700, color:T.ink, marginBottom:4 }}>{user.name}</h2>
+          <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.78rem', color:T.inkL, marginBottom:4, textTransform:'capitalize' }}>{user.role} Account</p>
+          <p style={{ fontFamily:'monospace', fontSize:'0.7rem', color:T.inkL, background:T.paper, padding:'2px 8px', borderRadius:6, display:'inline-block' }}>ID: {user.id}</p>
+        </div>
+        <button onClick={onLogout} style={{ padding:'10px 20px', background:T.paper, color:T.inkM, border:`1px solid ${T.line}`, borderRadius:10, fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', fontWeight:600, cursor:'pointer', flexShrink:0 }}>Sign Out</button>
       </div>
 
-      {visible.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '40px 20px', background: T.white, borderRadius: 14, border: `1px solid ${T.line}` }}>
-          <p style={{ fontFamily: '"Playfair Display",serif', fontStyle: 'italic', color: T.inkM, fontSize: '1rem' }}>No pending reports 🎉</p>
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {visible.map(p => (
-            <div key={p.id} style={{ background: T.white, borderRadius: 12, border: '1.5px solid #F5C5BE', padding: '14px', display: 'flex', gap: 12 }}>
-              <img src={p.imageUrl} alt={p.name} style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 8, flexShrink: 0 }}/>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ fontFamily: '"Playfair Display",serif', fontStyle: 'italic', fontSize: '0.88rem', color: T.ink, margin: '0 0 2px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{p.name}</p>
-                <p style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.72rem', color: T.inkL, margin: '0 0 6px' }}>by {p.sellerName}</p>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Flag size={11} color={T.rust}/>
-                  <span style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.72rem', color: T.rust, fontWeight: 600 }}>
-                    {p.reports} report{p.reports !== 1 ? 's' : ''}: {p.reason}
-                  </span>
-                </div>
+      {isSeller && (
+        <>
+          <div className="stats-grid" style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:14, marginBottom:28 }}>
+            {[['Items Listed',myProducts.length,'📦'],['My Shop',user.name,'🏪']].map(([l,v,e]) => (
+              <div key={String(l)} style={{ background:T.white, borderRadius:16, padding:'20px 16px', textAlign:'center', boxShadow:`0 2px 10px ${T.shadow}`, border:`1px solid ${T.line}` }}>
+                <p style={{ fontSize:'1.5rem', marginBottom:8 }}>{e}</p>
+                <p style={{ fontFamily:'"Playfair Display",serif', fontSize:typeof v==='number'?'1.8rem':'1.1rem', fontWeight:700, color:T.forest, marginBottom:4 }}>{v}</p>
+                <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.7rem', color:T.inkL, fontWeight:500, textTransform:'uppercase', letterSpacing:'0.08em' }}>{l}</p>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0 }}>
-                <button onClick={() => remove(p.id)}  style={{ padding: '6px 10px', background: T.rust,  color: '#fff',    border: 'none',                       borderRadius: 7, fontFamily: '"Inter",sans-serif', fontSize: '0.68rem', fontWeight: 600, cursor: 'pointer' }}>Remove</button>
-                <button onClick={() => dismiss(p.id)} style={{ padding: '6px 10px', background: T.paper, color: T.inkL,    border: `1px solid ${T.line}`,         borderRadius: 7, fontFamily: '"Inter",sans-serif', fontSize: '0.68rem', cursor: 'pointer' }}>Dismiss</button>
-              </div>
+            ))}
+          </div>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
+            <h3 style={{ fontFamily:'"Playfair Display",serif', fontSize:'1.2rem', fontWeight:700, color:T.ink }}>My Listings</h3>
+            <span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.78rem', color:T.inkL }}>{myProducts.length} items</span>
+          </div>
+          {loading ? <Spinner T={T}/> : myProducts.length===0 ? (
+            <div style={{ textAlign:'center', padding:'60px 20px', background:T.white, borderRadius:20, border:`1px solid ${T.line}` }}>
+              <p style={{ fontFamily:'"Playfair Display",serif', fontStyle:'italic', color:T.inkM, fontSize:'1.1rem' }}>No listings yet</p>
+              <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.85rem', color:T.inkL, marginTop:8 }}>Start listing your handcrafted items!</p>
             </div>
-          ))}
+          ) : (
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(180px,1fr))', gap:16 }}>
+              {myProducts.map(p => (
+                <div key={p.id} style={{ background:T.white, borderRadius:16, overflow:'hidden', boxShadow:`0 2px 10px ${T.shadow}`, border:`1.5px solid ${confirmId===p.id?T.rust:T.line}`, transition:'border-color .2s' }}>
+                  <div className="card-hover" onClick={()=>onProduct(p)} style={{ cursor:'pointer' }}>
+                    <div style={{ position:'relative' }}>
+                      <img src={p.imageUrl} style={{ width:'100%', aspectRatio:'4/3', objectFit:'cover' }} alt=""/>
+                      {deletingId===p.id && <div style={{ position:'absolute', inset:0, background:'rgba(255,255,255,0.85)', display:'flex', alignItems:'center', justifyContent:'center' }}><Loader2 size={24} color={T.rust} style={{animation:'spin 1s linear infinite'}}/></div>}
+                    </div>
+                    <div style={{ padding:'12px 14px 8px' }}>
+                      <h4 style={{ fontFamily:'"Playfair Display",serif', fontStyle:'italic', fontSize:'0.88rem', color:T.ink, overflow:'hidden', whiteSpace:'nowrap', textOverflow:'ellipsis', marginBottom:4 }}>{p.name}</h4>
+                      <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.88rem', fontWeight:700, color:T.forest }}>₹{p.price}</p>
+                    </div>
+                  </div>
+                  <div style={{ padding:'0 12px 12px' }}>
+                    <button onClick={e=>handleDelete(p.id,e)} disabled={!!deletingId}
+                      style={{ width:'100%', padding:'7px', background:confirmId===p.id?T.rust:'transparent', color:confirmId===p.id?'#fff':T.rust, border:`1px solid ${T.rust}`, borderRadius:8, fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', fontWeight:600, cursor:'pointer', transition:'all .2s' }}>
+                      {confirmId===p.id?'⚠ Confirm Remove':'Remove'}
+                    </button>
+                    {confirmId===p.id && <button onClick={e=>{e.stopPropagation();setConfirmId(null);}} style={{ width:'100%', marginTop:4, padding:'6px', background:'transparent', border:`1px solid ${T.line}`, borderRadius:8, fontFamily:'"Inter",sans-serif', fontSize:'0.68rem', color:T.inkL, cursor:'pointer' }}>Cancel</button>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {!isSeller && (
+        <div style={{ textAlign:'center', padding:'60px 20px', background:T.white, borderRadius:20, border:`1px solid ${T.line}` }}>
+          <Store size={48} color={T.lineD} style={{ margin:'0 auto 16px', display:'block' }}/>
+          <p style={{ fontFamily:'"Playfair Display",serif', fontStyle:'italic', color:T.inkM, fontSize:'1.1rem', marginBottom:8 }}>You're browsing as a buyer</p>
+          <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.85rem', color:T.inkL }}>Tap "Sell" to open your own workshop!</p>
         </div>
       )}
     </div>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────
-//  REPORT PRODUCT BUTTON
-// ─────────────────────────────────────────────────────────────────
-
-const REPORT_REASONS = [
-  'Fake/counterfeit item', 'Misleading description',
-  'Wrong category', 'Spam or inappropriate', 'Price gouging',
+// ── LOGIN VIEW ─────────────────────────────────────────────
+const DEMO_ACCOUNTS = [
+  { label:'Guest Buyer', email:'buyer@demo.com', password:'password123', icon:'🛍️', desc:'Browse & buy' },
+  { label:'Seller Demo', email:'u1@artisanbazaar.com', password:'password123', icon:'🏪', desc:'List & sell' },
 ];
 
-export function ReportProductButton({
-  productId, T, onReport,
-}: {
-  productId: string;
-  T: Tokens;
-  onReport?: (productId: string, reason: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [done, setDone] = useState(false);
+function LoginView({ onLogin, T }:{ onLogin:(u:{role:'buyer'|'seller';name:string;id:string;email?:string})=>void; T:Tokens }) {
+  const [email, setEmail]   = useState('');
+  const [pass, setPass]     = useState('');
+  const [name, setName]     = useState('');
+  const [isReg, setIsReg]   = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [demoLoading, setDemoLoading] = useState<string|null>(null);
+  const [error, setError]   = useState('');
 
-  const report = (reason: string) => {
-    onReport?.(productId, reason);
-    setDone(true); setOpen(false);
-    setTimeout(() => setDone(false), 4000);
+  const inp:React.CSSProperties = { width:'100%', marginTop:6, padding:'12px 14px', background:T.offwhite, border:`1.5px solid ${T.line}`, borderRadius:10, fontSize:'0.92rem', outline:'none', color:T.ink, fontFamily:'"Inter",sans-serif', transition:'border-color .2s' };
+  const lbl:React.CSSProperties = { fontFamily:'"Inter",sans-serif', fontSize:'0.75rem', fontWeight:600, color:T.inkL };
+
+  const doLogin = async (e:string, p:string, demoLabel?:string) => {
+    setError('');
+    if (demoLabel) setDemoLoading(demoLabel); else setLoading(true);
+    try {
+      const res = await api.auth.login(e, p);
+      onLogin({role:res.user.role,name:res.user.shopName??res.user.name,id:res.user.id,email:e});
+    } catch(err) {
+      if (err instanceof ApiError) setError(err.message);
+      else if (err instanceof TypeError) setError('Cannot reach server. Please wait 30 seconds and try again.');
+      else setError('Something went wrong. Please try again.');
+    } finally { setLoading(false); setDemoLoading(null); }
   };
 
-  if (done) return <p style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.72rem', color: T.inkL }}>✓ Report submitted</p>;
+  const submit = async () => {
+    setError(''); setLoading(true);
+    try {
+      const res = isReg ? await api.auth.register({name,email,password:pass,role:'buyer'}) : await api.auth.login(email,pass);
+      onLogin({role:res.user.role,name:res.user.shopName??res.user.name,id:res.user.id,email});
+    } catch(e) {
+      if (e instanceof ApiError) setError(e.message);
+      else if (e instanceof TypeError) setError('Cannot reach server. Please wait 30 seconds and try again.');
+      else setError('Something went wrong. Please try again.');
+    } finally { setLoading(false); }
+  };
 
   return (
-    <div style={{ position: 'relative' }}>
-      <button
-        onClick={() => setOpen(o => !o)}
-        style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: 'pointer', color: T.inkL, fontFamily: '"Inter",sans-serif', fontSize: '0.72rem', padding: '4px 8px' }}>
-        <Flag size={12}/> Report
-      </button>
-      <AnimatePresence>
-        {open && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              style={{ position: 'fixed', inset: 0, zIndex: 200 }}
-              onClick={() => setOpen(false)}/>
-            <motion.div
-              initial={{ opacity: 0, y: 4, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 4, scale: 0.95 }}
-              style={{ position: 'absolute', bottom: '110%', right: 0, zIndex: 201, background: T.white, borderRadius: 12, padding: 12, width: 220, boxShadow: `0 8px 32px ${T.shadowM}`, border: `1px solid ${T.line}` }}>
-              <p style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.68rem', fontWeight: 600, color: T.inkL, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Report reason</p>
-              {REPORT_REASONS.map(r => (
-                <button
-                  key={r} onClick={() => report(r)}
-                  style={{ width: '100%', padding: '8px 10px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: '"Inter",sans-serif', fontSize: '0.78rem', color: T.inkM, borderRadius: 6 }}
-                  onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.background = T.paper}
-                  onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.background = 'none'}>
-                  {r}
+    <div style={{ minHeight:'80vh', display:'flex', alignItems:'center', justifyContent:'center', padding:'32px 16px' }}>
+      <div style={{ width:'100%', maxWidth:420 }}>
+        <div style={{ textAlign:'center', marginBottom:32 }}>
+          <div style={{ width:60, height:60, background:T.forest, borderRadius:18, display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 16px' }}>
+            <Leaf size={30} color="#fff"/>
+          </div>
+          <h2 style={{ fontFamily:'"Playfair Display",serif', fontSize:'1.8rem', fontWeight:700, color:T.ink, marginBottom:8 }}>
+            {isReg ? 'Create Account' : 'Welcome Back'}
+          </h2>
+          <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.88rem', color:T.inkL }}>
+            {isReg ? 'Join thousands of artisans and buyers' : 'Sign in to your Artisan Bazaar account'}
+          </p>
+        </div>
+
+        {!isReg && (
+          <div style={{ marginBottom:20 }}>
+            <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', fontWeight:700, color:T.inkL, textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:10, textAlign:'center' }}>Quick Access — Demo Accounts</p>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+              {DEMO_ACCOUNTS.map(acc => (
+                <button key={acc.label} onClick={()=>doLogin(acc.email, acc.password, acc.label)}
+                  disabled={!!demoLoading || loading}
+                  style={{ padding:'14px 12px', background:T.paper, border:`1.5px solid ${T.line}`, borderRadius:12, cursor:'pointer', textAlign:'left', transition:'border-color .15s, box-shadow .15s', position:'relative', opacity:(demoLoading&&demoLoading!==acc.label)?0.5:1 }}
+                  onMouseEnter={e=>{ (e.currentTarget as HTMLButtonElement).style.borderColor=T.forest; (e.currentTarget as HTMLButtonElement).style.boxShadow=`0 4px 16px ${T.shadow}`; }}
+                  onMouseLeave={e=>{ (e.currentTarget as HTMLButtonElement).style.borderColor=T.line; (e.currentTarget as HTMLButtonElement).style.boxShadow='none'; }}>
+                  {demoLoading===acc.label ? (
+                    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8, padding:'4px 0' }}>
+                      <Loader2 size={16} color={T.forest} style={{animation:'spin 1s linear infinite'}}/>
+                      <span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.78rem', color:T.forest }}>Signing in…</span>
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ fontSize:'1.4rem', marginBottom:6 }}>{acc.icon}</div>
+                      <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', fontWeight:700, color:T.ink, marginBottom:2 }}>{acc.label}</p>
+                      <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.7rem', color:T.inkL }}>{acc.desc}</p>
+                    </>
+                  )}
                 </button>
               ))}
-            </motion.div>
-          </>
+            </div>
+            <div style={{ display:'flex', alignItems:'center', gap:10, margin:'16px 0' }}>
+              <div style={{ flex:1, height:1, background:T.line }}/>
+              <span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', color:T.inkL, fontWeight:500 }}>or sign in manually</span>
+              <div style={{ flex:1, height:1, background:T.line }}/>
+            </div>
+          </div>
         )}
-      </AnimatePresence>
+
+        <div style={{ background:T.white, borderRadius:20, padding:'28px', boxShadow:`0 8px 40px ${T.shadowM}`, border:`1px solid ${T.line}` }}>
+          {error && (
+            <div style={{ padding:'12px 14px', background:'#FFF0EE', border:'1px solid #F5C5BE', borderRadius:10, display:'flex', alignItems:'center', gap:8, marginBottom:20 }}>
+              <AlertCircle size={14} color="#9B3D2A"/><span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.85rem', color:'#9B3D2A' }}>{error}</span>
+            </div>
+          )}
+          <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+            {isReg && (
+              <div>
+                <label style={lbl}>Full Name</label>
+                <input value={name} onChange={e=>setName(e.target.value)} style={inp} placeholder="Your full name"/>
+              </div>
+            )}
+            <div>
+              <label style={lbl}>Email Address</label>
+              <input type="email" value={email} onChange={e=>setEmail(e.target.value)} style={inp} placeholder="your@email.com"/>
+            </div>
+            <div>
+              <label style={lbl}>Password</label>
+              <input type="password" value={pass} onChange={e=>setPass(e.target.value)} style={inp} placeholder="••••••••" onKeyDown={e=>{ if(e.key==='Enter') void submit(); }}/>
+            </div>
+          </div>
+
+          <button onClick={()=>void submit()} disabled={loading}
+            style={{ width:'100%', marginTop:24, padding:'14px', background:loading?T.lineD:T.forest, color:'#fff', border:'none', borderRadius:12, fontFamily:'"Inter",sans-serif', fontSize:'0.9rem', fontWeight:600, cursor:loading?'not-allowed':'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:8, transition:'background .15s' }}>
+            {loading?<><Loader2 size={16} style={{animation:'spin 1s linear infinite'}}/> Please wait…</>:<>{isReg?'Create Account':'Sign In'} <ArrowRight size={16}/></>}
+          </button>
+
+          <p style={{ textAlign:'center', marginTop:16, fontFamily:'"Inter",sans-serif', fontSize:'0.85rem', color:T.inkL }}>
+            {isReg?'Already have an account? ':'New here? '}
+            <button onClick={()=>{ setIsReg(r=>!r); setError(''); }} style={{ background:'none', border:'none', color:T.forest, cursor:'pointer', fontWeight:600, fontSize:'0.85rem', fontFamily:'"Inter",sans-serif' }}>
+              {isReg?'Sign in':'Create account'}
+            </button>
+          </p>
+        </div>
+      </div>
     </div>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────
-//  SELLER PUBLIC PROFILE PAGE
-// ─────────────────────────────────────────────────────────────────
+// ── ADMIN / DEVELOPER VIEW ─────────────────────────────────
+interface SellerGroup { sellerId:string; sellerName:string; products:Product[]; }
 
-export function SellerProfilePage({
-  sellerId, sellerName, products, T, onProduct, onAddToCart,
-}: {
-  sellerId: string;
-  sellerName: string;
-  products: Product[];
-  T: Tokens;
-  onProduct: (p: Product) => void;
-  onAddToCart: (p: Product) => void;
-}) {
-  const sellerProducts = products.filter(p => p.sellerId === sellerId);
+function AdminView({ T, showToast }:{ T:Tokens; showToast:(m:string,t?:'success'|'error')=>void }) {
+  const [allProducts, setAllProducts]   = useState<Product[]>([]);
+  const [loading, setLoading]           = useState(true);
+  const [deletingId, setDeletingId]     = useState<string|null>(null);
+  const [confirmId, setConfirmId]       = useState<string|null>(null);
+  const [expandedSeller, setExpandedSeller] = useState<string|null>(null);
+  const [searchSeller, setSearchSeller] = useState('');
+  const [removedIds, setRemovedIds]     = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    setLoading(true);
+    api.products.list({ limit:200 })
+      .then(r => setAllProducts(r.data))
+      .catch(() => showToast('Could not load products','error'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleRemove = async (pid:string, e:React.MouseEvent) => {
+    e.stopPropagation();
+    if (confirmId !== pid) { setConfirmId(pid); return; }
+    setDeletingId(pid); setConfirmId(null);
+    try {
+      await api.products.delete(pid);
+      setRemovedIds(prev => new Set([...prev, pid]));
+      setAllProducts(p => p.filter(x => x.id !== pid));
+      showToast('Product removed from marketplace');
+    } catch { showToast('Could not remove product','error'); }
+    finally { setDeletingId(null); }
+  };
+
+  const sellers: SellerGroup[] = Object.values(
+    allProducts.reduce((acc, p) => {
+      if (!acc[p.sellerId]) acc[p.sellerId] = { sellerId:p.sellerId, sellerName:p.sellerName, products:[] };
+      acc[p.sellerId].products.push(p);
+      return acc;
+    }, {} as Record<string,SellerGroup>)
+  ).filter(s => s.sellerName.toLowerCase().includes(searchSeller.toLowerCase()));
+
+  const totalProducts = allProducts.length;
+  const totalSellers  = new Set(allProducts.map(p=>p.sellerId)).size;
 
   return (
-    <div style={{ maxWidth: 900, margin: '0 auto', padding: '24px 16px' }}>
-      <div style={{ background: `linear-gradient(135deg, ${T.forest} 0%, #1a3320 100%)`, borderRadius: 20, padding: '32px 28px', marginBottom: 24, position: 'relative', overflow: 'hidden' }}>
-        <div style={{ position: 'absolute', top: -30, right: -30, width: 120, height: 120, borderRadius: '50%', background: 'rgba(255,255,255,0.06)' }}/>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-          <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '2px solid rgba(255,255,255,0.3)' }}>
-            <span style={{ fontFamily: '"Playfair Display",serif', fontSize: '1.6rem', fontWeight: 700, color: '#fff' }}>
-              {sellerName?.[0]?.toUpperCase()}
-            </span>
-          </div>
-          <div>
-            <h1 style={{ fontFamily: '"Playfair Display",serif', fontStyle: 'italic', fontSize: '1.5rem', fontWeight: 700, color: '#fff', margin: '0 0 4px' }}>{sellerName}</h1>
-            <div style={{ display: 'flex', gap: 16 }}>
-              <span style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.78rem', color: 'rgba(255,255,255,0.7)' }}>{sellerProducts.length} products</span>
-              <span style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.78rem', color: 'rgba(255,255,255,0.7)' }}>⭐ Verified Artisan</span>
+    <div style={{ maxWidth:960, margin:'0 auto' }}>
+      <div style={{ background:`linear-gradient(135deg,#4A1A7A 0%,#2A0A4A 100%)`, borderRadius:20, padding:'28px', marginBottom:24, position:'relative', overflow:'hidden' }}>
+        <div style={{ position:'absolute', top:-30, right:-30, width:120, height:120, borderRadius:'50%', background:'rgba(255,255,255,0.05)' }}/>
+        <div style={{ position:'relative', zIndex:1 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:16 }}>
+            <div style={{ width:44, height:44, background:'rgba(255,255,255,0.15)', borderRadius:12, display:'flex', alignItems:'center', justifyContent:'center' }}>
+              <Shield size={22} color="#fff"/>
             </div>
+            <div>
+              <h2 style={{ fontFamily:'"Playfair Display",serif', fontSize:'1.4rem', fontWeight:700, color:'#fff', margin:0 }}>Developer Panel</h2>
+              <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', color:'rgba(255,255,255,0.6)', margin:0, letterSpacing:'0.08em' }}>ARTISAN BAZAAR ADMIN</p>
+            </div>
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12 }}>
+            {[['Total Products',totalProducts,'📦'],['Total Sellers',totalSellers,'🏪'],['Removed Today',removedIds.size,'🗑️']].map(([l,v,e])=>(
+              <div key={String(l)} style={{ background:'rgba(255,255,255,0.1)', borderRadius:12, padding:'12px', textAlign:'center', backdropFilter:'blur(4px)' }}>
+                <p style={{ fontSize:'1.2rem', marginBottom:4 }}>{e}</p>
+                <p style={{ fontFamily:'"Playfair Display",serif', fontSize:'1.4rem', fontWeight:700, color:'#fff', lineHeight:1 }}>{v}</p>
+                <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.62rem', color:'rgba(255,255,255,0.6)', textTransform:'uppercase', letterSpacing:'0.08em', marginTop:4 }}>{l}</p>
+              </div>
+            ))}
           </div>
         </div>
       </div>
 
-      <h2 style={{ fontFamily: '"Playfair Display",serif', fontSize: '1.1rem', fontWeight: 700, color: T.ink, marginBottom: 16 }}>
-        All Listings by {sellerName}
-      </h2>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(180px,1fr))', gap: 14 }}>
-        {sellerProducts.map(p => (
-          <div
-            key={p.id} onClick={() => onProduct(p)}
-            style={{ background: T.white, borderRadius: 14, overflow: 'hidden', cursor: 'pointer', border: `1px solid ${T.line}`, boxShadow: `0 2px 10px ${T.shadow}` }}>
-            <img src={p.imageUrl} alt={p.name} style={{ width: '100%', aspectRatio: '1', objectFit: 'cover' }}/>
-            <div style={{ padding: '10px 12px' }}>
-              <p style={{ fontFamily: '"Playfair Display",serif', fontStyle: 'italic', fontSize: '0.85rem', color: T.ink, margin: '0 0 6px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{p.name}</p>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontFamily: '"Inter",sans-serif', fontSize: '0.9rem', fontWeight: 700, color: T.ink }}>₹{p.price}</span>
-                <button
-                  onClick={e => { e.stopPropagation(); onAddToCart(p); }}
-                  style={{ padding: '5px 10px', background: T.forest, color: '#fff', border: 'none', borderRadius: 6, fontFamily: '"Inter",sans-serif', fontSize: '0.65rem', fontWeight: 600, cursor: 'pointer' }}>
-                  Add
-                </button>
-              </div>
-            </div>
-          </div>
-        ))}
+      <div style={{ position:'relative', marginBottom:20 }}>
+        <Search style={{ position:'absolute', left:14, top:'50%', transform:'translateY(-50%)', color:T.inkL }} size={15}/>
+        <input type="text" placeholder="Search artisan by name…" value={searchSeller} onChange={e=>setSearchSeller(e.target.value)}
+          style={{ width:'100%', paddingLeft:42, paddingRight:16, paddingTop:11, paddingBottom:11, background:T.white, border:`1.5px solid ${T.line}`, borderRadius:12, fontSize:'0.88rem', outline:'none', color:T.ink, fontFamily:'"Inter",sans-serif' }}/>
       </div>
+
+      {loading ? <Spinner label="Loading all artisans…" T={T}/> : sellers.length===0 ? (
+        <div style={{ textAlign:'center', padding:'60px 20px' }}>
+          <p style={{ fontFamily:'"Playfair Display",serif', fontStyle:'italic', color:T.inkM, fontSize:'1.1rem' }}>No artisans found</p>
+        </div>
+      ) : (
+        <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+          {sellers.map(seller => {
+            const isOpen = expandedSeller === seller.sellerId;
+            return (
+              <div key={seller.sellerId} style={{ background:T.white, borderRadius:16, border:`1px solid ${T.line}`, overflow:'hidden', boxShadow:`0 2px 10px ${T.shadow}` }}>
+                <button onClick={()=>setExpandedSeller(isOpen?null:seller.sellerId)}
+                  style={{ width:'100%', padding:'16px 20px', background:'none', border:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:14, textAlign:'left' }}>
+                  <div style={{ width:44, height:44, borderRadius:'50%', background:'linear-gradient(135deg,#4A1A7A,#7A3AB0)', display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontFamily:'"Playfair Display",serif', fontSize:'1.1rem', fontWeight:700, flexShrink:0 }}>
+                    {seller.sellerName[0]?.toUpperCase()}
+                  </div>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <p style={{ fontFamily:'"Playfair Display",serif', fontStyle:'italic', fontSize:'1rem', fontWeight:700, color:T.ink, margin:0 }}>{seller.sellerName}</p>
+                    <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', color:T.inkL, margin:'2px 0 0' }}>{seller.products.length} product{seller.products.length!==1?'s':''} listed</p>
+                  </div>
+                  <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                    <div style={{ background:T.forestXL, borderRadius:8, padding:'4px 10px' }}>
+                      <span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.68rem', color:T.forest, fontWeight:600 }}>{seller.products.length} items</span>
+                    </div>
+                    <ChevronRight size={16} color={T.inkL} style={{ transform:isOpen?'rotate(90deg)':'rotate(0deg)', transition:'transform .2s' }}/>
+                  </div>
+                </button>
+
+                <AnimatePresence>
+                  {isOpen && (
+                    <motion.div initial={{height:0,opacity:0}} animate={{height:'auto',opacity:1}} exit={{height:0,opacity:0}} transition={{duration:.2}}
+                      style={{ overflow:'hidden' }}>
+                      <div style={{ padding:'0 16px 16px', borderTop:`1px solid ${T.line}` }}>
+                        <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', fontWeight:600, color:'#7A3AB0', textTransform:'uppercase', letterSpacing:'0.1em', padding:'12px 0 10px' }}>
+                          Products by {seller.sellerName}
+                        </p>
+                        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))', gap:12 }}>
+                          {seller.products.map(p => (
+                            <div key={p.id} style={{ background:T.offwhite, borderRadius:12, overflow:'hidden', border:`1.5px solid ${confirmId===p.id?T.rust:T.line}`, transition:'border-color .2s' }}>
+                              <div style={{ position:'relative', aspectRatio:'1', overflow:'hidden' }}>
+                                <img src={p.imageUrl} alt={p.name} style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
+                                {deletingId===p.id && (
+                                  <div style={{ position:'absolute', inset:0, background:'rgba(0,0,0,0.6)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                                    <Loader2 size={24} color="#fff" style={{animation:'spin 1s linear infinite'}}/>
+                                  </div>
+                                )}
+                                <div style={{ position:'absolute', top:6, left:6, background:'rgba(255,255,255,0.92)', borderRadius:6, padding:'2px 7px' }}>
+                                  <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.58rem', fontWeight:600, color:T.inkM }}>{p.category}</p>
+                                </div>
+                              </div>
+                              <div style={{ padding:'10px 12px' }}>
+                                <p style={{ fontFamily:'"Playfair Display",serif', fontStyle:'italic', fontSize:'0.82rem', color:T.ink, marginBottom:2, ...clamp(2) }}>{p.name}</p>
+                                <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.78rem', fontWeight:700, color:T.forest, marginBottom:10 }}>₹{p.price}</p>
+                                {confirmId===p.id ? (
+                                  <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                                    <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.68rem', color:T.rust, fontWeight:600, textAlign:'center' }}>Not genuine?</p>
+                                    <button onClick={e=>handleRemove(p.id,e)} disabled={!!deletingId}
+                                      style={{ width:'100%', padding:'7px', background:T.rust, color:'#fff', border:'none', borderRadius:7, fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', fontWeight:600, cursor:'pointer' }}>
+                                      ⚠ Confirm Remove
+                                    </button>
+                                    <button onClick={e=>{e.stopPropagation();setConfirmId(null);}}
+                                      style={{ width:'100%', padding:'6px', background:'transparent', border:`1px solid ${T.line}`, borderRadius:7, fontFamily:'"Inter",sans-serif', fontSize:'0.68rem', color:T.inkL, cursor:'pointer' }}>
+                                      Cancel
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button onClick={e=>handleRemove(p.id,e)} disabled={!!deletingId}
+                                    style={{ width:'100%', padding:'7px', background:'transparent', color:T.rust, border:`1px solid ${T.rust}`, borderRadius:7, fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', fontWeight:600, cursor:'pointer', transition:'all .2s' }}>
+                                    Remove Product
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
