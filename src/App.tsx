@@ -208,6 +208,9 @@ function CartDrawer({ cart, onClose, onUpdateQty, onRemove, onClearCart, showToa
 }
 
 // ── ORDER FORM MODAL ───────────────────────────────────────
+// ── ORDER FORM MODAL ───────────────────────────────────────
+// Replace the ENTIRE OrderFormModal function in your App.tsx with this
+
 interface OrderForm { name:string; email:string; mobile:string; address:string; city:string; pincode:string; }
 
 function OrderFormModal({ cart, onClose, onSuccess, T }:{ cart:CartItem[]; onClose:()=>void; onSuccess:()=>void; T:Tokens }) {
@@ -234,87 +237,65 @@ function OrderFormModal({ cart, onClose, onSuccess, T }:{ cart:CartItem[]; onClo
   };
 
   const placeOrder = async () => {
-  const err = validate();
-  if (err) { setError(err); return; }
-  setSending(true); setError('');
+    const err = validate();
+    if (err) { setError(err); return; }
 
-  // ── Check env vars first ──────────────────────────
-  const SERVICE_ID  = import.meta.env.VITE_EMAILJS_SERVICE_ID;
-  const TEMPLATE_ID = import.meta.env.VITE_EMAILJS_TEMPLATE_ID;
-  const PUBLIC_KEY  = import.meta.env.VITE_EMAILJS_PUBLIC_KEY;
+    const serviceId  = import.meta.env.VITE_EMAILJS_SERVICE_ID;
+    const templateId = import.meta.env.VITE_EMAILJS_TEMPLATE_ID;
+    const publicKey  = import.meta.env.VITE_EMAILJS_PUBLIC_KEY;
 
-  console.log('EmailJS Config:', { SERVICE_ID, TEMPLATE_ID, PUBLIC_KEY });
-
-  if (!SERVICE_ID || !TEMPLATE_ID || !PUBLIC_KEY) {
-    setError('Email service not configured. Check your .env file.');
-    setSending(false);
-    return;
-  }
-
-  try {
-    const emailjs = await import('@emailjs/browser');
-
-    const orderId = orderIdRef.current;
-
-    const itemsText = cart
-      .map(i => `• ${i.product.name} (x${i.qty}) — Rs.${(i.product.price * i.qty).toFixed(2)}`)
-      .join('\n');
-
-    const templateParams = {
-      order_id:         orderId,
-      customer_name:    form.name,
-      name:             form.name,
-      to_email:         form.email,
-      email:            form.email,
-      mobile:           form.mobile,
-      order_items:      itemsText,
-      order_total:      total.toFixed(2),
-      delivery_address: `${form.address}, ${form.city} - ${form.pincode}`,
-      order_date:       new Date().toLocaleDateString('en-IN', {
-        day: 'numeric', month: 'long', year: 'numeric',
-      }),
-    };
-
-    console.log('Sending email with params:', templateParams);
-
-    const response = await emailjs.send(
-      SERVICE_ID,
-      TEMPLATE_ID,
-      templateParams,
-      PUBLIC_KEY,
-    );
-
-    console.log('EmailJS success:', response);
-    onSuccess(orderId);
-
-  } catch (e: unknown) {
-    console.error('EmailJS full error:', e);
-
-    // Show specific error message
-    if (e instanceof Error) {
-      // EmailJS returns error as object with status + text
-      const ejsError = e as unknown as { status?: number; text?: string };
-
-      if (ejsError.status === 400) {
-        setError('Email template error. Check your EmailJS template variables.');
-      } else if (ejsError.status === 401) {
-        setError('Invalid EmailJS public key. Check your .env file.');
-      } else if (ejsError.status === 404) {
-        setError('EmailJS service or template not found. Check IDs in .env file.');
-      } else if (ejsError.status === 422) {
-        setError('Email address is invalid or rejected.');
-      } else if (ejsError.status === 429) {
-        setError('Too many emails sent. EmailJS free limit reached (200/month).');
-      } else {
-        setError(`Email error: ${ejsError.text ?? e.message ?? 'Unknown error'}`);
-      }
-    } else {
-      setError('Could not send email. Check console for details.');
+    if (!serviceId || !templateId || !publicKey) {
+      setError(
+        `Email service not configured. Missing:${!serviceId?' SERVICE_ID':''}${!templateId?' TEMPLATE_ID':''}${!publicKey?' PUBLIC_KEY':''}`
+      );
+      return;
     }
-  } finally {
-    setSending(false);
-  }
-};
+
+    setSending(true);
+    setError('');
+
+    try {
+      const ejs = (window as any).emailjs;
+      if (!ejs) {
+        setError('EmailJS script not loaded. Check index.html.');
+        setSending(false);
+        return;
+      }
+
+      const itemsText = cart
+        .map(i => `• ${i.product.name} (x${i.qty}) — Rs.${(i.product.price * i.qty).toFixed(2)}`)
+        .join('\n');
+
+      await ejs.send(
+        serviceId,
+        templateId,
+        {
+          order_id:         orderId,
+          customer_name:    form.name,
+          name:             form.name,       // matches {{name}} in From Name field
+          to_email:         form.email,      // matches {{to_email}} in To Email field
+          email:            form.email,      // matches {{email}} in Reply To field
+          mobile:           form.mobile,
+          order_items:      itemsText,
+          order_total:      total.toFixed(2),
+          delivery_address: `${form.address}, ${form.city} - ${form.pincode}`,
+          order_date:       new Date().toLocaleDateString('en-IN', {
+            day: 'numeric', month: 'long', year: 'numeric',
+          }),
+        },
+        publicKey,
+      );
+
+      onSuccess();
+    } catch (e: any) {
+      console.error('EmailJS error:', e);
+      // Show the actual EmailJS error message if available
+      const msg = e?.text || e?.message || 'Could not send confirmation. Please try again.';
+      setError(msg);
+    } finally {
+      setSending(false);
+    }
+  };
 
   return (
     <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
@@ -323,14 +304,21 @@ function OrderFormModal({ cart, onClose, onSuccess, T }:{ cart:CartItem[]; onClo
       <motion.div initial={{y:'100%'}} animate={{y:0}} exit={{y:'100%'}} transition={{type:'spring',damping:30,stiffness:280}}
         style={{ background:T.white, borderRadius:'16px 16px 0 0', width:'100%', maxWidth:520,
           maxHeight:'92vh', display:'flex', flexDirection:'column', boxShadow:`0 -8px 40px ${T.shadowL}` }}>
+
+        {/* Header */}
         <div style={{ padding:'20px 24px 16px', borderBottom:`1px solid ${T.line}`, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
           <div>
             <h2 style={{ fontFamily:'"Playfair Display",serif', fontSize:'1.2rem', fontWeight:700, color:T.ink, margin:'0 0 4px' }}>Delivery Details</h2>
             <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.78rem', color:T.inkL, margin:0 }}>Order {orderId} · ₹{total.toFixed(2)}</p>
           </div>
-          <button onClick={onClose} style={{ background:T.paper, border:'none', borderRadius:8, width:36, height:36, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:T.inkM }}><X size={18}/></button>
+          <button onClick={onClose} style={{ background:T.paper, border:'none', borderRadius:8, width:36, height:36, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:T.inkM }}>
+            <X size={18}/>
+          </button>
         </div>
+
+        {/* Scrollable body */}
         <div style={{ flex:1, overflowY:'auto', padding:'20px 24px' }}>
+          {/* Order Summary */}
           <div style={{ background:T.paper, borderRadius:12, padding:'14px', marginBottom:20 }}>
             <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', fontWeight:600, color:T.inkL, textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:10 }}>Order Summary</p>
             {cart.map(item => (
@@ -338,7 +326,7 @@ function OrderFormModal({ cart, onClose, onSuccess, T }:{ cart:CartItem[]; onClo
                 <div style={{ display:'flex', alignItems:'center', gap:10 }}>
                   <img src={item.product.imageUrl} style={{ width:40, height:40, objectFit:'cover', borderRadius:6 }} alt=""/>
                   <div>
-                    <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', color:T.ink, margin:0, ...clamp(1) }}>{item.product.name}</p>
+                    <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.82rem', color:T.ink, margin:0, overflow:'hidden', whiteSpace:'nowrap', textOverflow:'ellipsis', maxWidth:160 }}>{item.product.name}</p>
                     <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', color:T.inkL, margin:0 }}>x{item.qty}</p>
                   </div>
                 </div>
@@ -350,38 +338,73 @@ function OrderFormModal({ cart, onClose, onSuccess, T }:{ cart:CartItem[]; onClo
               <span style={{ fontFamily:'"Inter",sans-serif', fontSize:'1rem', fontWeight:700, color:T.ink }}>₹{total.toFixed(2)}</span>
             </div>
           </div>
-          <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', fontWeight:600, color:T.forest, textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:14, display:'flex', alignItems:'center', gap:6 }}><User size={13}/>Personal Details</p>
+
+          {/* Personal Details */}
+          <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', fontWeight:600, color:T.forest, textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:14, display:'flex', alignItems:'center', gap:6 }}>
+            <User size={13}/>Personal Details
+          </p>
           <div style={{ display:'flex', flexDirection:'column', gap:14, marginBottom:20 }}>
-            <div><label style={lbl}>Full Name *</label><input type="text" placeholder="Your full name" value={form.name} onChange={e=>setForm({...form,name:e.target.value})} style={inp}/></div>
+            <div>
+              <label style={lbl}>Full Name *</label>
+              <input type="text" placeholder="Your full name" value={form.name} onChange={e=>setForm({...form,name:e.target.value})} style={inp}/>
+            </div>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-              <div><label style={lbl}>Email *</label><input type="email" placeholder="email@example.com" value={form.email} onChange={e=>setForm({...form,email:e.target.value})} style={inp}/></div>
-              <div><label style={lbl}>Mobile *</label><input type="tel" placeholder="9876543210" value={form.mobile} onChange={e=>setForm({...form,mobile:e.target.value})} style={inp}/></div>
+              <div>
+                <label style={lbl}>Email *</label>
+                <input type="email" placeholder="email@example.com" value={form.email} onChange={e=>setForm({...form,email:e.target.value})} style={inp}/>
+              </div>
+              <div>
+                <label style={lbl}>Mobile *</label>
+                <input type="tel" placeholder="9876543210" value={form.mobile} onChange={e=>setForm({...form,mobile:e.target.value})} style={inp}/>
+              </div>
             </div>
           </div>
-          <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', fontWeight:600, color:T.forest, textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:14, display:'flex', alignItems:'center', gap:6 }}><MapPin size={13}/>Delivery Address</p>
+
+          {/* Delivery Address */}
+          <p style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.72rem', fontWeight:600, color:T.forest, textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:14, display:'flex', alignItems:'center', gap:6 }}>
+            <MapPin size={13}/>Delivery Address
+          </p>
           <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-            <div><label style={lbl}>Street Address *</label><input type="text" placeholder="House no., Street, Area" value={form.address} onChange={e=>setForm({...form,address:e.target.value})} style={inp}/></div>
+            <div>
+              <label style={lbl}>Street Address *</label>
+              <input type="text" placeholder="House no., Street, Area" value={form.address} onChange={e=>setForm({...form,address:e.target.value})} style={inp}/>
+            </div>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-              <div><label style={lbl}>City *</label><input type="text" placeholder="Mumbai" value={form.city} onChange={e=>setForm({...form,city:e.target.value})} style={inp}/></div>
-              <div><label style={lbl}>Pincode *</label><input type="text" placeholder="400001" value={form.pincode} onChange={e=>setForm({...form,pincode:e.target.value})} style={inp}/></div>
+              <div>
+                <label style={lbl}>City *</label>
+                <input type="text" placeholder="Mumbai" value={form.city} onChange={e=>setForm({...form,city:e.target.value})} style={inp}/>
+              </div>
+              <div>
+                <label style={lbl}>Pincode *</label>
+                <input type="text" placeholder="400001" value={form.pincode} onChange={e=>setForm({...form,pincode:e.target.value})} style={inp}/>
+              </div>
             </div>
           </div>
+
+          {/* Error */}
           {error && (
             <div style={{ marginTop:14, padding:'12px 14px', background:'#FFF0EE', border:'1px solid #F5C5BE', borderRadius:8, display:'flex', alignItems:'center', gap:8 }}>
-              <AlertCircle size={14} color="#9B3D2A"/><span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.85rem', color:'#9B3D2A' }}>{error}</span>
+              <AlertCircle size={14} color="#9B3D2A"/>
+              <span style={{ fontFamily:'"Inter",sans-serif', fontSize:'0.85rem', color:'#9B3D2A' }}>{error}</span>
             </div>
           )}
         </div>
+
+        {/* Footer button */}
         <div style={{ padding:'20px 24px', borderTop:`1px solid ${T.line}` }}>
           <button onClick={placeOrder} disabled={sending}
             style={{ width:'100%', padding:'14px', background:sending?T.inkL:T.forest, color:'#fff', border:'none', borderRadius:10, fontFamily:'"Inter",sans-serif', fontSize:'0.9rem', fontWeight:600, cursor:sending?'not-allowed':'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
-            {sending ? <><Loader2 size={16} style={{animation:'spin 1s linear infinite'}}/> Sending…</> : <>Place Order & Get Email Confirmation <ArrowRight size={15}/></>}
+            {sending
+              ? <><Loader2 size={16} style={{animation:'spin 1s linear infinite'}}/> Sending…</>
+              : <>Place Order & Get Email Confirmation <ArrowRight size={15}/></>
+            }
           </button>
         </div>
       </motion.div>
     </motion.div>
   );
 }
+
 
 // ── ORDER SUCCESS ──────────────────────────────────────────
 function OrderSuccessModal({ orderId, email, onClose, T }:{ orderId:string; email:string; onClose:()=>void; T:Tokens }) {
