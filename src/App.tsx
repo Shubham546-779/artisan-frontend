@@ -240,9 +240,9 @@ function OrderFormModal({ cart, onClose, onSuccess, T }:{ cart:CartItem[]; onClo
     const err = validate();
     if (err) { setError(err); return; }
 
-   const serviceId  = import.meta.env.VITE_EMAILJS_SERVICE_ID  || 'service_q308t9o';
-const templateId = import.meta.env.VITE_EMAILJS_TEMPLATE_ID || 'template_wpt8k4w';
-const publicKey  = import.meta.env.VITE_EMAILJS_PUBLIC_KEY  || 'gmhrNm1DKu9SF_J_y';
+  const serviceId  = import.meta.env.VITE_EMAILJS_SERVICE_ID  || 'service_q308t9o';
+  const templateId = import.meta.env.VITE_EMAILJS_TEMPLATE_ID || 'template_wpt8k4w';
+  const publicKey  = import.meta.env.VITE_EMAILJS_PUBLIC_KEY  || 'WoqEzPHFpNT63cAu7';
 
     if (!serviceId || !templateId || !publicKey) {
       setError(
